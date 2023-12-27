@@ -1,11 +1,9 @@
 from torchvision.io import read_image
-from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models import resnet18, ResNet18_Weights
 
 img = read_image("test/assets/encode_jpeg/grace_hopper_517x606.jpg")
 
-# Step 1: Initialize model with the best available weights
-weights = ResNet50_Weights.DEFAULT
-model = resnet50(weights=weights)
+model = resnet18(pretrained=True)
 model.eval()
 
 # Step 2: Initialize the inference transforms
@@ -20,3 +18,4 @@ class_id = prediction.argmax().item()
 score = prediction[class_id].item()
 category_name = weights.meta["categories"][class_id]
 print(f"{category_name}: {100 * score:.1f}%")
+
