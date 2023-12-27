@@ -1,0 +1,7 @@
+## cdo commands
+
+cdo delete,year=2020,2021,2022,2023 data/geopotential_height_500hPa_era5_6hourly_z0001_daymean_miss2023.nc data/geopotential_height_500hPa_era5_6hourly_z0001_daymean_max2019.nc
+
+cdo -delete,month=9 GTD_1979-2019_JJAextd.nc GTD_1979-2019_JJAextd_8.nc
+
+cdo -delete,day=1/25,month=5 geopotential_height_500hPa_era5_6hourly_z0001_daymean_2019.nc geopotential_height_500hPa_era5_6hourly_z0001_daymean_2019_beginAdjust.nc
