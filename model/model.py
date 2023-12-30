@@ -20,14 +20,14 @@ with torch.no_grad():
     model.conv1.weight[:, 4] = model.conv1.weight[:, 0]
 
 # disable gradient descent for all pre-trained parameters
-for parameters in model.parameters():
-    parameters.requires_grad = False
+# for parameters in model.parameters():
+#    parameters.requires_grad = False
 
 # create new final linear layer
 fully_features = model.fc.in_features
-model.fc = nn.Sequential(nn.Linear(fully_features, 1), nn.ReLU())
+model.fc = nn.Sequential(nn.Linear(fully_features, 1), nn.Sigmoid())
 
-model.double()
+model.float()
 
 criterion = nn.BCELoss()
 optimizer = optim.SGD(model.parameters(), lr=0.001)
@@ -41,4 +41,4 @@ training_loader = torch.utils.data.DataLoader(
 
 dataloaders = {"train": training_loader, "val": training_loader}
 
-train_model(model, criterion, optimizer, scheduler, dataloaders, 1)
+train_model(model, criterion, optimizer, scheduler, dataloaders, 5)

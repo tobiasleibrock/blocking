@@ -14,6 +14,7 @@ device = torch.device(
 
 def train_model(model, criterion, optimizer, scheduler, dataloaders, num_epochs=25):
     since = time.time()
+    model.to(device)
 
     # Create a temporary directory to save training checkpoints
     with TemporaryDirectory() as tempdir:
@@ -47,12 +48,15 @@ def train_model(model, criterion, optimizer, scheduler, dataloaders, num_epochs=
                     # forward
                     # track history if only in train
                     with torch.set_grad_enabled(phase == "train"):
-                        outputs = model(inputs.double())
+                        outputs = model(inputs.float())
                         _, preds = torch.max(outputs, 1)
-                        loss = criterion(outputs.flatten(), labels)
+                        #print("labels: " + str(labels.float()))
+                        #print("output: " + str(outputs.flatten()))
+                        loss = criterion(outputs.flatten(), labels.float())
 
                         # backward + optimize only if in training phase
                         if phase == "train":
+                            #print("backwards with loss of: " + str(loss))
                             loss.backward()
                             optimizer.step()
 
