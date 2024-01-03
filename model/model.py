@@ -7,33 +7,16 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 from dataset import BlockingObservationalDataset
 from train import train_model
+from resnet18 import get_model as get_resnet18_model
+from resnet50 import get_model as get_resnet50_model
+from efficientnet_s import get_model as get_efficientnet_model
 
-BATCH_SIZE = 64
+BATCH_SIZE = 16
 LEARNING_RATE = 0.001
 
-#model = resnet18(weights=ResNet18_Weights.DEFAULT)
-#model = resnet50(weights=ResNet50_Weights.DEFAULT)
-model = efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.DEFAULT)
-
-# create new first conv layer (resnet)
-#conv1_weights = model.conv1.weight.clone()
-#model.conv1 = nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False)
-#with torch.no_grad():
-#    model.conv1.weight[:, :3] = conv1_weights
-#    model.conv1.weight[:, 3] = model.conv1.weight[:, 0]
-#    model.conv1.weight[:, 4] = model.conv1.weight[:, 0]
-model._conv_stem.in_channels = 5
-model._conv_stem.weight = torch.nn.Parameter(torch.cat([model._conv_stem.weight, model._conv_stem.weight], axis=1))
-
-# disable gradient descent for all pre-trained parameters
-for parameters in model.parameters():
-    parameters.requires_grad = False
-
-# create new final linear layer
-fully_features = model.fc.in_features
-model.fc = nn.Sequential(nn.Linear(fully_features, 1), nn.Sigmoid())
-
-model.float()
+#model = get_resnet18_model(linear_only=True)
+#model = get_resnet50_model(linear_only=True)
+model = get_efficientnet_model(linear_only=False)
 
 criterion = nn.BCELoss()
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
