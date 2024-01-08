@@ -14,9 +14,9 @@ from efficientnet_s import get_model as get_efficientnet_model
 BATCH_SIZE = 16
 LEARNING_RATE = 0.001
 
-#model = get_resnet18_model(linear_only=True)
+model = get_resnet18_model(linear_only=True)
 #model = get_resnet50_model(linear_only=True)
-model = get_efficientnet_model(linear_only=False)
+#model = get_efficientnet_model(linear_only=False)
 
 criterion = nn.BCELoss()
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)

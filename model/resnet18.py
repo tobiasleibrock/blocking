@@ -19,7 +19,8 @@ def get_model(linear_only):
     
     # create new final linear layer
     fully_features = model.fc.in_features
-    model.fc = nn.Sequential(nn.Linear(fully_features, 1), nn.Sigmoid())
+    print(fully_features)
+    model.fc = nn.Sequential(nn.Linear(int(fully_features/4), 1), nn.Sigmoid())
     
     model.float()
     
