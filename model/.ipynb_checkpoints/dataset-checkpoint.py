@@ -20,7 +20,7 @@ class BlockingObservationalDataset(Dataset):
         self.data = netCDFDataset(
             "./data/geopotential_height_500hPa_era5_6hourly_z0001_daymean_final.nc",
             mode="r",
-        ).variables["z_0001"][:]
+        ).variables["z_0001"][:, :, :, 550:950]
         
         # transform data and labels accordingly - should be done already pre-training
         self.transform = transform

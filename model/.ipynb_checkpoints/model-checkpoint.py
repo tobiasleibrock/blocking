@@ -11,10 +11,10 @@ from resnet18 import get_model as get_resnet18_model
 from resnet50 import get_model as get_resnet50_model
 from efficientnet_s import get_model as get_efficientnet_model
 
-BATCH_SIZE = 16
+BATCH_SIZE = 64
 LEARNING_RATE = 0.001
 
-model = get_resnet18_model(linear_only=True)
+model = get_resnet18_model(linear_only=False)
 #model = get_resnet50_model(linear_only=True)
 #model = get_efficientnet_model(linear_only=False)
 
@@ -34,4 +34,4 @@ validation_loader = torch.utils.data.DataLoader(
 
 dataloaders = {"train": training_loader, "val": validation_loader}
 
-train_model(model, criterion, optimizer, None, dataloaders, 15)
+train_model(model, criterion, optimizer, None, dataloaders, 30)

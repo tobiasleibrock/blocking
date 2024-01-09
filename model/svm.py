@@ -15,7 +15,7 @@ labels = netCDFDataset(
 data = netCDFDataset(
     "./data/geopotential_height_500hPa_era5_6hourly_z0001_daymean_final.nc",
     mode="r",
-).variables["z_0001"][:]
+).variables["z_0001"][:, :, :, 550:950]
 
 # Split the dataset into training and validation sets
 train_data, val_data, train_labels, val_labels = train_test_split(
@@ -27,7 +27,7 @@ train_data_flat = train_data.reshape(len(train_data), int(train_data.size/len(tr
 val_data_flat = val_data.reshape(len(val_data), int(val_data.size/len(val_data)))
 
 # Create a Support Vector Machine (SVM) model
-svm_model = svm.SVC(kernel='linear')
+svm_model = svm.SVC(kernel='linear', verbose=1)
 
 print("training model")
 # Train the SVM model

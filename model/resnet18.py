@@ -9,9 +9,11 @@ def get_model(linear_only):
     conv1_weights = model.conv1.weight.clone()
     model.conv1 = nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False)
     with torch.no_grad():
-        model.conv1.weight[:, :3] = conv1_weights
-        model.conv1.weight[:, 3] = model.conv1.weight[:, 0]
-        model.conv1.weight[:, 4] = model.conv1.weight[:, 0]
+        model.conv1.weight[:, 1] = conv1_weights[:, 0]
+        model.conv1.weight[:, 1] = conv1_weights[:, 0]
+        model.conv1.weight[:, 2] = conv1_weights[:, 0]
+        model.conv1.weight[:, 3] = conv1_weights[:, 0]
+        model.conv1.weight[:, 4] = conv1_weights[:, 0]
 
     # disable gradient descent for all pre-trained parameters
     for parameters in model.parameters():
@@ -19,8 +21,7 @@ def get_model(linear_only):
     
     # create new final linear layer
     fully_features = model.fc.in_features
-    print(fully_features)
-    model.fc = nn.Sequential(nn.Linear(int(fully_features/4), 1), nn.Sigmoid())
+    model.fc = nn.Sequential(nn.Linear(fully_features, 1), nn.Sigmoid())
     
     model.float()
     
