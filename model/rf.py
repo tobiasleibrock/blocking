@@ -11,11 +11,11 @@ from sklearn.model_selection import GridSearchCV, KFold, train_test_split
 print("loading data")
 labels = netCDFDataset("./data/labels/GTD_1979-2019_JJAextd_8.nc", mode="r").variables[
     "blocking"
-][:100]
+][:500]
 data = netCDFDataset(
     "./data/geopotential_height_500hPa_era5_6hourly_z0001_daymean_final.nc",
     mode="r",
-).variables["z_0001"][:100, :1, :5, 550:950]
+).variables["z_0001"][:500, :1, :5, 550:950]
 
 # Split the dataset into training and validation sets
 train_data, val_data, train_labels, val_labels = train_test_split(
