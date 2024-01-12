@@ -21,17 +21,21 @@ model = get_resnet18_model(linear_only=False)
 criterion = nn.BCELoss()
 optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
 
-#scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
+scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
 
-training_dataset = BlockingObservationalDataset(run="train")
-validation_dataset = BlockingObservationalDataset(run="val")
+dataset = BlockingObservationalDataset()
+test_size = len(dataset) * 0.15
+train_size = len(dataset) - test_size
+
+train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+
 training_loader = torch.utils.data.DataLoader(
-    training_dataset, batch_size=BATCH_SIZE, shuffle=False
+    train_dataset, batch_size=BATCH_SIZE, shuffle=False
 )
-validation_loader = torch.utils.data.DataLoader(
-    validation_dataset, batch_size=BATCH_SIZE, shuffle=False
+test_loader = torch.utils.data.DataLoader(
+    test_dataset, batch_size=BATCH_SIZE, shuffle=False
 )
 
-dataloaders = {"train": training_loader, "val": validation_loader}
+dataloaders = {"train": training_loader, "val": test_loader}
 
-train_model(model, criterion, optimizer, None, dataloaders, 30)
+train_model(model, criterion, optimizer, scheduler, dataloaders, 30)
