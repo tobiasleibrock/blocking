@@ -31,12 +31,12 @@ val_data_flat = val_data.reshape(len(val_data), int(val_data.size / len(val_data
 rf = RandomForestClassifier(verbose=1)
 
 param_grid = {
-    "n_estimators": [50, 100, 200, 300],
-    "max_depth": [None, 10, 20, 30],
+    "n_estimators": [100],
+    "max_depth": [None],
     "min_samples_split": [2, 5, 10],
-    "min_samples_leaf": [1, 2, 4],
-    "max_features": ["auto", "sqrt", "log2"],
-    "bootstrap": [True, False],
+    "min_samples_leaf": [1, 2, 4, 7],
+    "max_features": ["1.0", "sqrt", "log2"],
+    "bootstrap": [True],
 }
 
 rf_classifier = RandomForestClassifier()
