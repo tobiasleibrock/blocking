@@ -5,3 +5,5 @@ data/*
 .ipynb_checkpoints/*
 model/.ipynb_checkpoints/*
 .vscode/*
+runs/*
+*.csv

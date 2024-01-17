@@ -17,8 +17,7 @@ class BlockingObservationalDataset(Dataset):
         self.target_transform = target_transform
 
     def __len__(self):
-        if self.run == "train":
-            return len(self.data)
+        return len(self.data)
 
     def __getitem__(self, idx):
         data = self.data[idx]
