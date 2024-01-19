@@ -2,12 +2,14 @@ import torch
 import time
 from tempfile import TemporaryDirectory
 import os
-from torchmetrics.classification import BinaryF1Score
+from torchmetrics.classification import BinaryF1Score, BinaryRecall, BinaryPrecision
 from datetime import datetime
 import torchmetrics
+import torchvision
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.model_selection import KFold
 from torch.utils.data import Subset
+from sklearn.metrics import confusion_matrix
 
 BATCH_SIZE = 64   
 
@@ -20,6 +22,8 @@ device = torch.device(
 )
 
 f1 = BinaryF1Score(threshold=0.5).to(device)
+recall = BinaryRecall(threshold=0.5).to(device)
+precision = BinaryPrecision(threshold=0.5).to(device)
 
 current_datetime = datetime.now()
 run = current_datetime.strftime("%Y-%m-%d %H:%M")
@@ -36,7 +40,7 @@ def train_model(model, criterion, optimizer, scheduler, datasets, num_epochs=25)
         test_dataset, batch_size=BATCH_SIZE, shuffle=False
     )
 
-    kf = KFold(n_splits=5, shuffle=True)
+    kf = KFold(n_splits=2, shuffle=True)
 
     with TemporaryDirectory() as tempdir:
         
@@ -74,8 +78,9 @@ def train_model(model, criterion, optimizer, scheduler, datasets, num_epochs=25)
                     optimizer.step()
                     #scheduler.step()
                     training_writer.add_scalar('loss', loss.item(), run_train)
-                    #training_writer.add_scalar('accuracy', preds.float(), run_train)
-                    training_writer.add_scalar('f1', f1(outputs.flatten(), labels.float()), run_train)
+                    training_writer.add_scalar('recall', recall(outputs.flatten(), labels.float()), run_train)
+                    training_writer.add_scalar('precision', precision(outputs.flatten(), labels.float()), run_train)
+                    training_writer.add_scaltenar('f1', f1(outputs.flatten(), labels.float()), run_train)
                     run_train += 1
     
                 model.eval()
@@ -87,8 +92,12 @@ def train_model(model, criterion, optimizer, scheduler, datasets, num_epochs=25)
                         outputs = model(inputs)
                         _, predictions = torch.max(outputs, 1)
                         validation_writer.add_scalar('loss', loss.item(), run_val)
-                        #validation_writer.add_scalar('accuracy', preds.float(), run_val)
+                        validation_writer.add_scalar('recall', recall(outputs.flatten(), labels.float()), run_val)
+                        validation_writer.add_scalar('precision', precision(outputs.flatten(), labels.float()), run_val)
                         validation_writer.add_scalar('f1', f1(outputs.flatten(), labels.float()), run_val)
+
+                        img_grid = torchvision.utils.make_grid(inputs.view((64, 1, -1, 100)))
+                        validation_writer.add_image("val_geo", img_grid)
                         run_val += 1
     
             time_elapsed = time.time() - since
