@@ -15,14 +15,24 @@ def get_model(linear_only):
         model.conv1.weight[:, 3] = conv1_weights[:, 0]
         model.conv1.weight[:, 4] = conv1_weights[:, 0]
 
-    # disable gradient descent for all pre-trained parameters
-    for parameters in model.parameters():
-        parameters.requires_grad = not linear_only
-    
     # create new final linear layer
     fully_features = model.fc.in_features
-    model.fc = nn.Sequential(nn.Linear(fully_features, 1), nn.Sigmoid())
-    
+    model.fc = nn.Sequential(
+        nn.Linear(fully_features, 1), 
+        nn.Sigmoid()
+    )
+
+    # disable gradient descent for all pre-trained parameters
+    #for parameters in model.parameters():
+    #    parameters.requires_grad = not linear_only
+
+    for index, parameter in enumerate(model.parameters()):
+        if index < 30:
+            parameter.requires_grad = False
+
+    print(model)
+    for index, parameter in enumerate(model.named_parameters()): 
+     print((index, parameter[0], parameter[1].requires_grad))
     model.float()
     
     return model
