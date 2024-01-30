@@ -2,7 +2,7 @@ from torchvision.models import resnet18, ResNet18_Weights
 import torch.nn as nn
 import torch
 
-def get_model(linear_only):
+def get_model():
     model = resnet18(weights=ResNet18_Weights.DEFAULT)
 
     # create new first conv layer (resnet)
@@ -22,17 +22,10 @@ def get_model(linear_only):
         nn.Sigmoid()
     )
 
-    # disable gradient descent for all pre-trained parameters
-    #for parameters in model.parameters():
-    #    parameters.requires_grad = not linear_only
-
     for index, parameter in enumerate(model.parameters()):
         if index < 30:
             parameter.requires_grad = False
 
-    print(model)
-    for index, parameter in enumerate(model.named_parameters()): 
-     print((index, parameter[0], parameter[1].requires_grad))
     model.float()
     
     return model

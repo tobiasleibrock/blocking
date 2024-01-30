@@ -9,12 +9,13 @@ import torchvision
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.model_selection import KFold
 from torch.utils.data import Subset
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import numpy as np
 import matplotlib.pyplot as plt
 import torch.nn as nn
+from torch.utils.data import WeightedRandomSampler
 
-BATCH_SIZE = 64   
+BATCH_SIZE = 64
 
 device = torch.device(
     "cuda"
@@ -31,7 +32,11 @@ precision = BinaryPrecision(threshold=0.5).to(device)
 current_datetime = datetime.now()
 run = current_datetime.strftime("%Y-%m-%d %H:%M")
 
-def train_model(model, optimizer, scheduler, datasets, num_epochs=25):
+def log_day_set(writer, data):
+    img_grid = torchvision.utils.make_grid(data.view((1, -1, 100)))
+    writer.add_image("false_positives", img_grid)
+
+def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
     since = time.time()
     print("starting training..")
     
@@ -44,7 +49,11 @@ def train_model(model, optimizer, scheduler, datasets, num_epochs=25):
         test_dataset, batch_size=BATCH_SIZE, shuffle=False
     )
 
-    kf = KFold(n_splits=2, shuffle=True)
+    ukesm_loader = torch.utils.data.DataLoader(
+        ukesm_dataset, batch_size=BATCH_SIZE, shuffle=False
+    )
+
+    kf = KFold(n_splits=5, shuffle=True)
 
     with TemporaryDirectory() as tempdir:
         
@@ -52,21 +61,33 @@ def train_model(model, optimizer, scheduler, datasets, num_epochs=25):
         torch.save(model.state_dict(), os.path.join(tempdir, "original_weights.pt"))
         
         for fold, (train_indices, val_indices) in enumerate(kf.split(train_dataset)):
+            if fold != 0: continue
             print(f"fold {fold+1}/{5}")
 
             model.load_state_dict(torch.load(os.path.join(tempdir, "original_weights.pt")))
     
-            training_writer = SummaryWriter(f"runs/training/{run}/{fold}")    
-            validation_writer = SummaryWriter(f"runs/validation/{run}/{fold}") 
-            testing_writer = SummaryWriter(f"runs/test/{run}/{fold}") 
+            training_writer = SummaryWriter(f"runs/training/{run}/{fold}/{info}")    
+            validation_writer = SummaryWriter(f"runs/validation/{run}/{fold}/{info}") 
+            testing_writer = SummaryWriter(f"runs/test/{run}/{fold}/{info}") 
+            ukesm_writer = SummaryWriter(f"runs/ukesm/{run}/{fold}/{info}") 
+
+            train_ds = Subset(train_dataset, train_indices)
+
+            subset_data = [train_dataset[idx] for idx in train_ds.indices]
+            _, subset_labels = zip(*subset_data)
+            labels = torch.tensor(subset_labels).long()
+            train_counts = torch.bincount(labels)
+            train_class_weights = len(labels) / (2.0 * train_counts.float())
+            train_weights = train_class_weights[labels]
+            train_sampler = WeightedRandomSampler(train_weights, len(labels))
     
             train_loader = torch.utils.data.DataLoader(
-                Subset(train_dataset, train_indices), batch_size=BATCH_SIZE, shuffle=False
+                train_ds, batch_size=BATCH_SIZE, shuffle=False, sampler=train_sampler
             )
             val_loader = torch.utils.data.DataLoader(
                 Subset(train_dataset, val_indices), batch_size=BATCH_SIZE, shuffle=False
             )
-    
+            
             for epoch in range(num_epochs):
                 print(f"epoch {epoch}/{num_epochs - 1}")
 
@@ -86,6 +107,7 @@ def train_model(model, optimizer, scheduler, datasets, num_epochs=25):
                     class_weights = 64 / (2.0 * class_counts.float())
                     sample_weights = class_weights[labels.long()]
                     criterion = nn.BCELoss(weight=sample_weights)
+                    #criterion = nn.BCELoss()
                     
                     loss = criterion(outputs.flatten(), labels.float())
                     loss.backward()
@@ -99,8 +121,8 @@ def train_model(model, optimizer, scheduler, datasets, num_epochs=25):
                 epoch_loss = epoch_loss / len(epoch_labels)
 
                 training_writer.add_scalar('loss', epoch_loss, epoch)
-                #training_writer.add_scalar('recall', recall(epoch_outputs, epoch_labels), epoch)
-                #training_writer.add_scalar('precision', precision(epoch_outputs, epoch_labels), epoch)
+                training_writer.add_scalar('recall', recall(epoch_outputs, epoch_labels), epoch)
+                training_writer.add_scalar('precision', precision(epoch_outputs, epoch_labels), epoch)
                 training_writer.add_scalar('f1', f1(epoch_outputs, epoch_labels), epoch)
 
                 ### VALIDATION ###
@@ -128,15 +150,14 @@ def train_model(model, optimizer, scheduler, datasets, num_epochs=25):
                 validation_writer.add_scalar('recall', recall(epoch_outputs, epoch_labels), epoch)
                 validation_writer.add_scalar('precision', precision(epoch_outputs, epoch_labels), epoch)
                 validation_writer.add_scalar('f1', f1(epoch_outputs, epoch_labels), epoch)
-    
-                conf_matrix = confusion_matrix(epoch_labels, (epoch_outputs >= 0.5).int(), labels=np.array([0, 1]))
-                
-                fig, ax = plt.subplots()
-                im = ax.imshow(conf_matrix, cmap='viridis')
-                plt.colorbar(im)
-                validation_writer.add_figure('conf-matrix', fig, global_step=epoch)
 
-                ### TESTING (UKESM) ###
+                # confusion matrix plotting
+                conf_matrix = confusion_matrix(epoch_labels, (epoch_outputs >= 0.5).int(), labels=np.array([0, 1]))
+                disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix, display_labels=["no blocking", "blocking"])
+                disp.plot()
+                validation_writer.add_figure('conf-matrix', disp.figure_, global_step=epoch)
+
+                ### TESTING (TEST) ###
 
                 model.eval()
                 epoch_loss = 0.0
@@ -156,6 +177,31 @@ def train_model(model, optimizer, scheduler, datasets, num_epochs=25):
                 
                 testing_writer.add_scalar('loss', epoch_loss, epoch)
                 testing_writer.add_scalar('f1', f1(epoch_outputs, epoch_labels), epoch)
+                testing_writer.add_scalar('recall', recall(epoch_outputs, epoch_labels), epoch)
+                testing_writer.add_scalar('precision', precision(epoch_outputs, epoch_labels), epoch)
+                
+                ### TESTING (UKESM) ###
+
+                #model.eval()
+                #epoch_loss = 0.0
+                #epoch_labels = torch.tensor([])
+                #epoch_outputs = torch.tensor([])
+                #with torch.no_grad():
+                 ##   for inputs, labels in ukesm_loader:
+                 #       inputs, labels = inputs.to(device), labels.to(device)
+                 #       outputs = model(inputs)
+                #        _, predictions = torch.max(outputs, 1)
+                #        
+                #        epoch_loss += outputs.shape[0] * loss.item()
+                #        epoch_labels = torch.cat((epoch_labels, labels.float().detach().cpu()), 0)
+                #        epoch_outputs = torch.cat((epoch_outputs, outputs.flatten().detach().cpu()), 0)
+                #
+                #epoch_loss = epoch_loss / len(epoch_labels)
+               # 
+                #ukesm_writer.add_scalar('loss', epoch_loss, epoch)
+                #ukesm_writer.add_scalar('f1', f1(epoch_outputs, epoch_labels), epoch)
+                #ukesm_writer.add_scalar('recall', recall(epoch_outputs, epoch_labels), epoch)
+                #ukesm_writer.add_scalar('precision', precision(epoch_outputs, epoch_labels), epoch)
             
             time_elapsed = time.time() - since
             print(

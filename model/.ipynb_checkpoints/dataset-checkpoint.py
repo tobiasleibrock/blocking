@@ -1,6 +1,8 @@
 from torch.utils.data import Dataset
 from netCDF4 import Dataset as netCDFDataset
 import netCDF4
+from PIL import Image
+import numpy as np
 
 class BlockingObservationalDataset(Dataset):
     def __init__(self):
@@ -22,7 +24,7 @@ class BlockingObservationalDataset(Dataset):
         return data, label
 
 class BlockingObservationalDataset1x1(Dataset):
-    def __init__(self):
+    def __init__(self, transform=None):
         self.labels = netCDFDataset(
             "./data/labels/GTD_1979-2019_JJAextd_8.nc", mode="r"
         ).variables["blocking"][:]
@@ -30,6 +32,7 @@ class BlockingObservationalDataset1x1(Dataset):
             "./data/geopotential_height_500hPa_era5_6hourly_z0001_daymean_2019_beginAdjust_1x1_final.nc",
             mode="r",
         ).variables["z_0001"][:]
+        self.transform = transform
 
     def __len__(self):
         return len(self.data)
@@ -38,7 +41,12 @@ class BlockingObservationalDataset1x1(Dataset):
         data = self.data[idx]
         label = self.labels[idx]
 
-        return data, label
+        images = [Image.fromarray(d) for d in data]
+        
+        if self.transform:
+            images = [self.transform(i) for i in images]
+
+        return np.array(images), label
 
 class BlockingUKESMDataset1x1(Dataset):
     def __init__(self, transform=None, target_transform=None):
