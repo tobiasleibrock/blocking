@@ -170,7 +170,22 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                     "f1", f1(epoch_outputs, epoch_labels), epoch
                 )
 
-                # confusion matrix plotting
+                # FALSE POSITIVES
+                predictions = (epoch_outputs >= 0.5).float()
+                false_positives = (predictions == 1) & (epoch_labels == 0)
+                false_negatives = (predictions == 0) & (epoch_labels == 1)
+
+                for idx, (fp, fn) in enumerate(zip(false_positives, false_negatives)):
+                    if fp.item():
+                        validation_writer.add_image(
+                            f"false-positive/{epoch}_{idx}", inputs[idx], epoch
+                        )
+                    if fn.item():
+                        validation_writer.add_image(
+                            f"false-negative/{epoch}_{idx}", inputs[idx], epoch
+                        )
+
+                # CONFUSION MATRIX
                 conf_matrix = confusion_matrix(
                     epoch_labels, (epoch_outputs >= 0.5).int(), labels=np.array([0, 1])
                 )
@@ -185,65 +200,65 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
 
                 ### TESTING (TEST) ###
 
-                model.eval()
-                epoch_loss = 0.0
-                epoch_labels = torch.tensor([])
-                epoch_outputs = torch.tensor([])
-                with torch.no_grad():
-                    for inputs, labels in test_loader:
-                        inputs, labels = inputs.to(device), labels.to(device)
-                        outputs = model(inputs)
-                        _, predictions = torch.max(outputs, 1)
+                # model.eval()
+                # epoch_loss = 0.0
+                # epoch_labels = torch.tensor([])
+                # epoch_outputs = torch.tensor([])
+                # with torch.no_grad():
+                #     for inputs, labels in test_loader:
+                #         inputs, labels = inputs.to(device), labels.to(device)
+                #         outputs = model(inputs)
+                #         _, predictions = torch.max(outputs, 1)
 
-                        epoch_loss += outputs.shape[0] * loss.item()
-                        epoch_labels = torch.cat(
-                            (epoch_labels, labels.float().detach().cpu()), 0
-                        )
-                        epoch_outputs = torch.cat(
-                            (epoch_outputs, outputs.flatten().detach().cpu()), 0
-                        )
+                #         epoch_loss += outputs.shape[0] * loss.item()
+                #         epoch_labels = torch.cat(
+                #             (epoch_labels, labels.float().detach().cpu()), 0
+                #         )
+                #         epoch_outputs = torch.cat(
+                #             (epoch_outputs, outputs.flatten().detach().cpu()), 0
+                #         )
 
-                epoch_loss = epoch_loss / len(epoch_labels)
+                # epoch_loss = epoch_loss / len(epoch_labels)
 
-                testing_writer.add_scalar("loss", epoch_loss, epoch)
-                testing_writer.add_scalar("f1", f1(epoch_outputs, epoch_labels), epoch)
-                testing_writer.add_scalar(
-                    "recall", recall(epoch_outputs, epoch_labels), epoch
-                )
-                testing_writer.add_scalar(
-                    "precision", precision(epoch_outputs, epoch_labels), epoch
-                )
+                # testing_writer.add_scalar("loss", epoch_loss, epoch)
+                # testing_writer.add_scalar("f1", f1(epoch_outputs, epoch_labels), epoch)
+                # testing_writer.add_scalar(
+                #     "recall", recall(epoch_outputs, epoch_labels), epoch
+                # )
+                # testing_writer.add_scalar(
+                #     "precision", precision(epoch_outputs, epoch_labels), epoch
+                # )
 
                 ### TESTING (UKESM) ###
 
-                model.eval()
-                epoch_loss = 0.0
-                epoch_labels = torch.tensor([])
-                epoch_outputs = torch.tensor([])
-                with torch.no_grad():
-                    for inputs, labels in ukesm_loader:
-                        inputs, labels = inputs.to(device), labels.to(device)
-                        outputs = model(inputs)
-                        _, predictions = torch.max(outputs, 1)
+            #     model.eval()
+            #     epoch_loss = 0.0
+            #     epoch_labels = torch.tensor([])
+            #     epoch_outputs = torch.tensor([])
+            #     with torch.no_grad():
+            #         for inputs, labels in ukesm_loader:
+            #             inputs, labels = inputs.to(device), labels.to(device)
+            #             outputs = model(inputs)
+            #             _, predictions = torch.max(outputs, 1)
 
-                        epoch_loss += outputs.shape[0] * loss.item()
-                        epoch_labels = torch.cat(
-                            (epoch_labels, labels.float().detach().cpu()), 0
-                        )
-                        epoch_outputs = torch.cat(
-                            (epoch_outputs, outputs.flatten().detach().cpu()), 0
-                        )
+            #             epoch_loss += outputs.shape[0] * loss.item()
+            #             epoch_labels = torch.cat(
+            #                 (epoch_labels, labels.float().detach().cpu()), 0
+            #             )
+            #             epoch_outputs = torch.cat(
+            #                 (epoch_outputs, outputs.flatten().detach().cpu()), 0
+            #             )
 
-                epoch_loss = epoch_loss / len(epoch_labels)
+            #     epoch_loss = epoch_loss / len(epoch_labels)
 
-            ukesm_writer.add_scalar("loss", epoch_loss, epoch)
-            ukesm_writer.add_scalar("f1", f1(epoch_outputs, epoch_labels), epoch)
-            ukesm_writer.add_scalar(
-                "recall", recall(epoch_outputs, epoch_labels), epoch
-            )
-            ukesm_writer.add_scalar(
-                "precision", precision(epoch_outputs, epoch_labels), epoch
-            )
+            # ukesm_writer.add_scalar("loss", epoch_loss, epoch)
+            # ukesm_writer.add_scalar("f1", f1(epoch_outputs, epoch_labels), epoch)
+            # ukesm_writer.add_scalar(
+            #     "recall", recall(epoch_outputs, epoch_labels), epoch
+            # )
+            # ukesm_writer.add_scalar(
+            #     "precision", precision(epoch_outputs, epoch_labels), epoch
+            # )
 
             time_elapsed = time.time() - since
             print(
