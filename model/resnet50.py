@@ -1,6 +1,7 @@
-from torchvision.models import resnet50, ResNet50_Weights
-import torch.nn as nn
 import torch
+import torch.nn as nn
+from torchvision.models import ResNet50_Weights, resnet50
+
 
 def get_model(linear_only):
     model = resnet50(weights=ResNet50_Weights.DEFAULT)
@@ -16,11 +17,11 @@ def get_model(linear_only):
     # disable gradient descent for all pre-trained parameters
     for parameters in model.parameters():
         parameters.requires_grad = not linear_only
-    
+
     # create new final linear layer
     fully_features = model.fc.in_features
     model.fc = nn.Sequential(nn.Linear(fully_features, 1), nn.Sigmoid())
-    
+
     model.float()
-    
+
     return model

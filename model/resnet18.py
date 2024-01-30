@@ -1,6 +1,7 @@
-from torchvision.models import resnet18, ResNet18_Weights
-import torch.nn as nn
 import torch
+import torch.nn as nn
+from torchvision.models import ResNet18_Weights, resnet18
+
 
 def get_model():
     model = resnet18(weights=ResNet18_Weights.DEFAULT)
@@ -17,15 +18,12 @@ def get_model():
 
     # create new final linear layer
     fully_features = model.fc.in_features
-    model.fc = nn.Sequential(
-        nn.Linear(fully_features, 1), 
-        nn.Sigmoid()
-    )
+    model.fc = nn.Sequential(nn.Linear(fully_features, 1), nn.Sigmoid())
 
     for index, parameter in enumerate(model.parameters()):
         if index < 30:
             parameter.requires_grad = False
 
     model.float()
-    
+
     return model
