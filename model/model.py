@@ -32,7 +32,7 @@ datasets = {"train": train_dataset, "test": test_dataset, "ukesm": ukesm_dataset
 # samplers = {"train": train_sampler, "ukesm": ukesm_sampler}
 
 optimizer = optim.SGD(
-    model.parameters(), lr=LEARNING_RATE, momentum=0.1, weight_decay=0.01
+    model.parameters(), lr=LEARNING_RATE, momentum=0.1, weight_decay=0.8
 )
 scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
-train_model(model, optimizer, scheduler, datasets, f"image", 40)
+train_model(model, optimizer, scheduler, datasets, f"with-negatives", 50)

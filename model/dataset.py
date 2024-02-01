@@ -2,6 +2,7 @@ import netCDF4
 from netCDF4 import Dataset as netCDFDataset
 from torch.utils.data import Dataset
 import xarray as xr
+import numpy as np
 
 class BlockingObservationalDataset(Dataset):
     def __init__(self):
@@ -31,6 +32,7 @@ class BlockingObservationalDataset1x1(Dataset):
             "./data/labels/GTD_1979-2019_JJAextd_8.nc", mode="r"
         ).variables["blocking"][:]
         self.data = xr_data.z_0001.data
+        # self.data = np.clip(self.data, 0, None)
         self.time = xr_data.time.data
         
         self.transform = transform

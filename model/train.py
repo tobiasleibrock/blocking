@@ -13,6 +13,10 @@ from torch.utils.data import Subset, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.classification import BinaryF1Score, BinaryPrecision, BinaryRecall
 
+### PLOTTING ###
+from matplotlib import pyplot as plt
+import cartopy.crs as ccrs
+
 BATCH_SIZE = 64
 
 device = torch.device(
@@ -27,6 +31,34 @@ precision = BinaryPrecision(threshold=0.5).to(device)
 
 current_datetime = datetime.now()
 run = current_datetime.strftime("%Y-%m-%d %H:%M")
+
+def get_image(data, time):
+    fig, axs = plt.subplots(nrows=5,ncols=1,
+                            subplot_kw={'projection': ccrs.PlateCarree()})
+
+    axs = axs.flatten()
+    clevs=np.arange(-5,5,1)
+    long = np.arange(-45, 55, 1)
+    lat = np.arange(30, 75, 1)
+
+    for i in range(5):
+        time = time + timedelta(days=1)
+        axs[i].coastlines(resolution="110m",linewidth=1)
+        cs = axs[i].contourf(long, lat, data[i].cpu(), clevs, transform=ccrs.PlateCarree(),cmap=plt.cm.jet)
+        if i == 0: axs[i].set_title(str(time))
+
+    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    fig.colorbar(cs, cax=cbar_ax,orientation='vertical')
+
+    plt.draw()
+
+    fig_np = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    fig_np = fig_np.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    fig_np = fig_np.transpose((2, 0, 1))
+
+    plt.close(fig)
+
+    return fig_np
 
 def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
     since = time.time()
@@ -163,12 +195,14 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                             for idx, (fp, fn) in enumerate(zip(false_positives, false_negatives)):
                                 t_str = datetime(1900, 1, 1) + timedelta(hours=int(t[idx]))
                                 if fp.item():
+                                    img = get_image(inputs[idx], t_str)
                                     validation_writer.add_image(
-                                        f"false-positive/{t_str.strftime('%Y-%m-%d')}", inputs[idx].view((1, 225, -1)), epoch
+                                        f"false-positive/{t_str.strftime('%Y-%m-%d')}", img, epoch
                                     )
                                 if fn.item():
+                                    img = get_image(inputs[idx], t_str)
                                     validation_writer.add_image(
-                                        f"false-negative/{t_str.strftime('%Y-%m-%d')}", inputs[idx].view((1, 225, -1)), epoch
+                                        f"false-negative/{t_str.strftime('%Y-%m-%d')}", img, epoch
                                     )
 
                         # img_grid = torchvision.utils.make_grid(inputs.view((64, 1, -1, 100)))
