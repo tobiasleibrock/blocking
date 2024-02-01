@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from tempfile import TemporaryDirectory
 
 import numpy as np
@@ -27,12 +27,6 @@ precision = BinaryPrecision(threshold=0.5).to(device)
 
 current_datetime = datetime.now()
 run = current_datetime.strftime("%Y-%m-%d %H:%M")
-
-
-def log_day_set(writer, data):
-    img_grid = torchvision.utils.make_grid(data.view((1, -1, 100)))
-    writer.add_image("false_positives", img_grid)
-
 
 def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
     since = time.time()
@@ -75,7 +69,7 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
             train_ds = Subset(train_dataset, train_indices)
 
             subset_data = [train_dataset[idx] for idx in train_ds.indices]
-            _, subset_labels = zip(*subset_data)
+            _, subset_labels, _ = zip(*subset_data)
             labels = torch.tensor(subset_labels).long()
             train_counts = torch.bincount(labels)
             train_class_weights = len(labels) / (2.0 * train_counts.float())
@@ -98,7 +92,7 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                 epoch_loss = 0.0
                 epoch_labels = torch.tensor([])
                 epoch_outputs = torch.tensor([])
-                for inputs, labels in train_loader:
+                for inputs, labels, _ in train_loader:
                     inputs, labels = inputs.to(device), labels.to(device)
                     optimizer.zero_grad()
                     outputs = model(inputs.float())
@@ -141,10 +135,13 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                 epoch_labels = torch.tensor([])
                 epoch_outputs = torch.tensor([])
                 with torch.no_grad():
-                    for inputs, labels in val_loader:
+                    for inputs, labels, t in val_loader:
                         inputs, labels = inputs.to(device), labels.to(device)
                         outputs = model(inputs)
-                        _, predictions = torch.max(outputs, 1)
+                        predictions = (outputs > 0.5).float().flatten()
+                        max_predictions = (outputs > 0.9).float().flatten()
+                        min_predictions = (outputs > 0.2).float().flatten()
+                        
 
                         epoch_loss += outputs.shape[0] * loss.item()
                         epoch_labels = torch.cat(
@@ -153,6 +150,26 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                         epoch_outputs = torch.cat(
                             (epoch_outputs, outputs.flatten().detach().cpu()), 0
                         )
+        
+                        if epoch == num_epochs - 1:
+                            false_positives = (predictions == 1) & (labels == 0)
+                            false_negatives = (predictions == 0) & (labels == 1)
+                            #false_positives = (max_predictions == 1) & (labels == 0)
+                            #false_negatives = (min_predictions == 0) & (labels == 1)
+
+                            print("false_positives: " + str(torch.sum(false_positives).item()))
+                            print("false_negatives: " + str(torch.sum(false_negatives).item()))
+                        
+                            for idx, (fp, fn) in enumerate(zip(false_positives, false_negatives)):
+                                t_str = datetime(1900, 1, 1) + timedelta(hours=int(t[idx]))
+                                if fp.item():
+                                    validation_writer.add_image(
+                                        f"false-positive/{t_str.strftime('%Y-%m-%d')}", inputs[idx].view((1, 225, -1)), epoch
+                                    )
+                                if fn.item():
+                                    validation_writer.add_image(
+                                        f"false-negative/{t_str.strftime('%Y-%m-%d')}", inputs[idx].view((1, 225, -1)), epoch
+                                    )
 
                         # img_grid = torchvision.utils.make_grid(inputs.view((64, 1, -1, 100)))
                         # validation_writer.add_image("val_geo", img_grid)
@@ -169,21 +186,6 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                 validation_writer.add_scalar(
                     "f1", f1(epoch_outputs, epoch_labels), epoch
                 )
-
-                # FALSE POSITIVES
-                predictions = (epoch_outputs >= 0.5).float()
-                false_positives = (predictions == 1) & (epoch_labels == 0)
-                false_negatives = (predictions == 0) & (epoch_labels == 1)
-
-                for idx, (fp, fn) in enumerate(zip(false_positives, false_negatives)):
-                    if fp.item():
-                        validation_writer.add_image(
-                            f"false-positive/{epoch}_{idx}", inputs[idx], epoch
-                        )
-                    if fn.item():
-                        validation_writer.add_image(
-                            f"false-negative/{epoch}_{idx}", inputs[idx], epoch
-                        )
 
                 # CONFUSION MATRIX
                 conf_matrix = confusion_matrix(

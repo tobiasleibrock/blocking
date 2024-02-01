@@ -3,6 +3,7 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 from alexnet import get_model as get_alexnet_model
+from resnet18 import get_model as get_resnet18_model
 from dataset import BlockingObservationalDataset1x1, BlockingUKESMDataset1x1
 from train import train_model
 
@@ -10,8 +11,8 @@ LEARNING_RATE = 0.001
 
 print("setting up model..")
 
-# model = get_resnet18_model()
-model = get_alexnet_model()
+model = get_resnet18_model()
+#model = get_alexnet_model()
 # model = get_resnet50_model(linear_only=True)
 # model = get_efficientnet_model(linear_only=False)
 
@@ -34,4 +35,4 @@ optimizer = optim.SGD(
     model.parameters(), lr=LEARNING_RATE, momentum=0.1, weight_decay=0.01
 )
 scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
-train_model(model, optimizer, scheduler, datasets, f"wd-{0.01}-alex", 30)
+train_model(model, optimizer, scheduler, datasets, f"image", 40)
