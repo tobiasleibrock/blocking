@@ -31,8 +31,9 @@ class BlockingObservationalDataset1x1(Dataset):
         self.labels = netCDFDataset(
             "./data/labels/GTD_1979-2019_JJAextd_8.nc", mode="r"
         ).variables["blocking"][:]
-        self.data = xr_data.z_0001.data
-        # self.data = np.clip(self.data, 0, None)
+
+        # zero out negative values
+        self.data = np.clip(xr_data.z_0001.data, 0, None)
         self.time = xr_data.time.data
         
         self.transform = transform
@@ -57,6 +58,9 @@ class BlockingUKESMDataset1x1(Dataset):
             "./data/500zg_day_UKESM1-0-LL_piControl_r1i1p1f2_gn_19600101-20601230_NHML_JJAextd_1x1_final.nc",
             mode="r",
         ).variables["z_0001"][:]
+
+        # zero out negative values
+        self.data = np.clip(self.data, 0, None)
 
     def __len__(self):
         return len(self.data)

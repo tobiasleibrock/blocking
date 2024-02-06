@@ -5,8 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "mpiexec propulate",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "poetry current file",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",

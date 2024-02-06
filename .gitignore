@@ -1,9 +1,22 @@
-data/*
+# macos
+.DS_Store
+
+# python
 .ipynb_checkpoints/*
 */__pycache__/*
-.DS_Store
 .ipynb_checkpoints/*
 model/.ipynb_checkpoints/*
+
+# propulate
+*.log
+*.out
+*.error
+*.bkp
+*.pkl
+
+# ide
 .vscode/*
+
+data/*
 runs/*
 *.csv

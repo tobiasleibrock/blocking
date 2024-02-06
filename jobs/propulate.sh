@@ -1,7 +1,7 @@
 #!/bin/bash
 # FILEPATH: /home/scc/mw8007/blocking/jobs/propulate.sh
 
-#SBATCH --ntasks=64
+#SBATCH --ntasks=16
 #SBATCH --time=8:00:00
 #SBATCH --job-name=blocking-propulate
 #SBATCH --partition=normal
@@ -13,4 +13,4 @@ cd /home/scc/mw8007/blocking
 
 poetry shell
 
-mpiexec -n 64 ./.venv/bin/python model/prop.py
+mpiexec -n 16 ./.venv/bin/python model/prop.py
