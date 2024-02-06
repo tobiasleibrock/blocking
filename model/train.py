@@ -1,24 +1,24 @@
 import os
-import time
 from datetime import datetime, timedelta
 from tempfile import TemporaryDirectory
 
-import numpy as np
+### ML ###
 import torch
-import torch.nn as nn
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
-from sklearn.model_selection import KFold
-from torch.utils.data import Subset, WeightedRandomSampler
+from torch import nn
+from torch import optim
+from torch.optim import lr_scheduler
+from torch.utils.data import Subset, WeightedRandomSampler, DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.classification import BinaryF1Score, BinaryPrecision, BinaryRecall
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+from sklearn.model_selection import KFold
+import numpy as np
 
 ### PLOTTING ###
 from matplotlib import pyplot as plt
 import cartopy.crs as ccrs
 
-import torch.optim as optim
-import torch.optim.lr_scheduler as lr_scheduler
-import torch.utils.data
+### CUSTOM MODULES ###
 from resnet18 import get_model as get_resnet18_model
 from dataset import BlockingObservationalDataset1x1, BlockingUKESMDataset1x1
 
@@ -83,11 +83,11 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
     test_dataset = datasets["test"]
     ukesm_dataset = datasets["ukesm"]
 
-    test_loader = torch.utils.data.DataLoader(
+    test_loader = DataLoader(
         test_dataset, batch_size=BATCH_SIZE, shuffle=False
     )
 
-    ukesm_loader = torch.utils.data.DataLoader(
+    ukesm_loader = DataLoader(
         ukesm_dataset, batch_size=BATCH_SIZE, shuffle=False
     )
 
@@ -122,10 +122,10 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
             train_weights = train_class_weights[labels]
             train_sampler = WeightedRandomSampler(train_weights, len(labels))
 
-            train_loader = torch.utils.data.DataLoader(
+            train_loader = DataLoader(
                 train_ds, batch_size=BATCH_SIZE, shuffle=False, sampler=train_sampler
             )
-            val_loader = torch.utils.data.DataLoader(
+            val_loader = DataLoader(
                 Subset(train_dataset, val_indices), batch_size=BATCH_SIZE, shuffle=False
             )
 
@@ -341,7 +341,7 @@ ukesm_dataset = BlockingUKESMDataset1x1()
 
 test_size = int(len(era5_dataset) * 0.15)
 train_size = len(era5_dataset) - test_size
-train_dataset, test_dataset = torch.utils.data.random_split(
+train_dataset, test_dataset = random_split(
     era5_dataset, [train_size, test_size]
 )
 

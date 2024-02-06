@@ -100,8 +100,8 @@ def ind_loss(params):
     ### TRAINING MODEL
 
     f1 = BinaryF1Score(threshold=0.5).to(device)
-    # recall = BinaryRecall(threshold=0.5).to(device)
-    # precision = BinaryPrecision(threshold=0.5).to(device)
+    recall = BinaryRecall(threshold=0.5).to(device)
+    precision = BinaryPrecision(threshold=0.5).to(device)
 
     current_datetime = datetime.now()
     run = current_datetime.strftime("%Y-%m-%d %H:%M")
@@ -111,7 +111,7 @@ def ind_loss(params):
 
     if DEBUG:
         validation_writer = SummaryWriter(f"{TENSORBOARD_PREFIX}{run}/validation/{params['model']}/{params['optimizer']}/{params['scheduler']}/{params['dropout']}/{params['weight_decay']}")
-        training_writer = SummaryWriter(f"{TENSORBOARD_PREFIX}{run}/training/{params['model']}/{params['optimizer']}/{params['scheduler']}/{params['dropout']}/{params['weight_decay']}")
+        # training_writer = SummaryWriter(f"{TENSORBOARD_PREFIX}{run}/training/{params['model']}/{params['optimizer']}/{params['scheduler']}/{params['dropout']}/{params['weight_decay']}")
 
     kf = KFold(n_splits=NUM_FOLDS, shuffle=True)
 
@@ -148,48 +148,50 @@ def ind_loss(params):
                 ### TRAINING ###
 
                 model.train()
-                # epoch_loss = 0.0
-                # epoch_labels = torch.tensor([])
-                # epoch_outputs = torch.tensor([])
+                epoch_loss = 0.0
+                epoch_labels = torch.tensor([])
+                epoch_outputs = torch.tensor([])
                 for inputs, labels, _ in train_loader:
                     inputs, labels = inputs.to(device), labels.to(device)
                     optimizer.zero_grad()
 
                     # fix for inception model in pytorch
                     # https://discuss.pytorch.org/t/inception-v3-is-not-working-very-well/38296/3
-                    if type(model) is Inception3:
-                        outputs = model(inputs.float())[0]
-                    else:
-                        outputs = model(inputs.float())
+                    # if type(model) is Inception3:
+                    #     outputs = model(inputs.float())[0]
+                    # else:
+                    outputs = model(inputs.float())
 
-                    if params["loss"] == "bce":
-                        criterion = nn.BCELoss()
-                    elif params["loss"] == "bce_weighted":
+                    # if params["loss"] == "bce":
+                    #     criterion = nn.BCELoss()
+                    # elif params["loss"] == "bce_weighted":
                         # scale loss weights by class imbalance in input data
-                        class_counts = torch.bincount(labels.long())
-                        class_weights = batch_size / (2.0 * class_counts.float())
-                        sample_weights = class_weights[labels.long()]
-                        criterion = nn.BCELoss(weight=sample_weights)
+                    class_counts = torch.bincount(labels.long())
+                    class_weights = batch_size / (2.0 * class_counts.float())
+                    sample_weights = class_weights[labels.long()]
+                    criterion = nn.BCELoss(weight=sample_weights)
 
                     loss = criterion(outputs.flatten(), labels.float())
                     loss.backward()
                     optimizer.step()
 
-                    if scheduler:
-                        if type(scheduler) is lr_scheduler.ReduceLROnPlateau:
-                            scheduler.step(loss.item())
-                        else:
-                            scheduler.step()
+                    epoch_loss += outputs.shape[0] * loss.item()
+                    epoch_labels = torch.cat(
+                        (epoch_labels, labels.float().detach().cpu()), 0
+                    )
+                    epoch_outputs = torch.cat(
+                        (epoch_outputs, outputs.flatten().detach().cpu()), 0
+                    )
 
-                #     epoch_loss += outputs.shape[0] * loss.item()
-                #     epoch_labels = torch.cat(
-                #         (epoch_labels, labels.float().detach().cpu()), 0
-                #     )
-                #     epoch_outputs = torch.cat(
-                #         (epoch_outputs, outputs.flatten().detach().cpu()), 0
-                #     )
+                epoch_loss = epoch_loss / len(epoch_labels)
+                epoch_predictions = (epoch_outputs > 0.5).float()
 
-                # epoch_loss = epoch_loss / len(epoch_labels)
+                print("training")
+                print((torch.bincount(epoch_predictions.long()), torch.bincount(epoch_labels.long())))
+                print(f"training outputs: {epoch_outputs[:9]}")
+                print(f"t_gue: {epoch_predictions[:17]}") 
+                print(f"t_lab: {epoch_labels[:17]}")
+                print(f"training {fold} f1: {f1(epoch_predictions, epoch_labels)} loss: {epoch_loss} mean: {torch.mean(epoch_predictions)}")
 
                 # if DEBUG and fold == 0:
                 #     training_writer.add_scalar("loss", epoch_loss, epoch)
@@ -217,8 +219,23 @@ def ind_loss(params):
                         )
 
                 epoch_loss = epoch_loss / len(epoch_labels)
+                epoch_predictions = (epoch_outputs > 0.5).float()
 
-                mean_f1[epoch] += f1(epoch_outputs, epoch_labels)
+                mean_f1[epoch] += f1(epoch_predictions, epoch_labels)
+
+
+                if len(torch.bincount(epoch_predictions.long())) == 0:
+                    print((epoch_outputs, epoch_predictions, epoch_labels))
+                
+                print("validation")
+                print((torch.bincount(epoch_predictions.long()), torch.bincount(epoch_labels.long())))
+                print(f"validation outputs: {epoch_outputs[:9]}")
+                print(f"v_gue: {epoch_predictions[:17]}") 
+                print(f"v_lab: {epoch_labels[:17]}")
+                print(f"validation fold {fold} f1: {f1(epoch_predictions, epoch_labels)} loss: {epoch_loss} mean: {torch.mean(epoch_predictions)}")
+                print()
+                print()
+                print()
                 mean_loss[epoch] += epoch_loss
 
                 # if DEBUG and fold == 0:
@@ -227,11 +244,20 @@ def ind_loss(params):
                     # validation_writer.add_scalar("recall", recall(epoch_outputs, epoch_labels), epoch)
                     # validation_writer.add_scalar("precision", precision(epoch_outputs, epoch_labels), epoch)
 
+                if scheduler:
+                    if type(scheduler) is lr_scheduler.ReduceLROnPlateau:
+                        scheduler.step(loss.item())
+                    else:
+                        scheduler.step()
+
+    print((mean_loss[:5], mean_f1[:5]))
+    print((mean_loss[-5:], mean_f1[-5:]))
     mean_loss = np.divide(mean_loss, count_folds)
     mean_f1 = np.divide(mean_f1, count_folds)
+    print((mean_loss[:5], mean_f1[:5]))
+    print((mean_loss[-5:], mean_f1[-5:]))
 
     if DEBUG:
-        print(f"mean_loss: {mean_loss.shape} mean_f1: {mean_f1.shape}")
         for idx, (loss, f1) in enumerate(zip(mean_loss, mean_f1)):
             validation_writer.add_scalar("loss", mean_loss[idx], idx)
             validation_writer.add_scalar("f1", mean_f1[idx], idx)
@@ -249,7 +275,7 @@ set_logger_config(
 
 
 comm = MPI.COMM_WORLD
-num_generations = 4
+num_generations = 1
 pop_size = 2 * MPI.COMM_WORLD.size
 # limits = {
 #     "model": ("resnet18", "resnet50", "efficientnet_s", "inception"),
@@ -261,14 +287,14 @@ pop_size = 2 * MPI.COMM_WORLD.size
 #     "weight_decay": (0.0, 5.0),
 # }
 limits = {
-    "model": ("resnet18", "resnet50"),
-    "scheduler": ("step", "plateau", "none"),
-    "loss": ("bce", "bce_weighted"),
-    "lr": (0.05, 0.0001),
-    "batch_size": (4, 256),
-    "optimizer": ("sgd_0", "sgd_09", "adam", "adagrad"),
-    "dropout": (0.0, 0.8),
-    "weight_decay": (0.0, 5.0),
+    "model": ("resnet18", "resnet18"),
+    "scheduler": ("step", "step"),
+    "loss": ("bce_weighted", "bce_weighted"),
+    "lr": (0.001, 0.002),
+    "batch_size": (63, 65),
+    "optimizer": ("adagrad", "adagrad"),
+    "dropout": (0.0, 0.0),
+    "weight_decay": (0.7, 0.8),
 }
 rng = random.Random(MPI.COMM_WORLD.rank)
 propagator = get_default_propagator(
@@ -289,4 +315,4 @@ propulator = Propulator(
 )
 
 propulator.propulate(1, 2)
-propulator.summarize(top_n=10, debug=2)
+propulator.summarize(top_n=1, debug=2)
