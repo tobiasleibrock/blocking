@@ -3,7 +3,7 @@ import torch.nn as nn
 from torchvision.models import ResNet18_Weights, resnet18
 
 
-def get_model():
+def get_model(dropout):
     model = resnet18(weights=ResNet18_Weights.DEFAULT)
 
     # create new first conv layer (resnet)
@@ -18,7 +18,7 @@ def get_model():
 
     # create new final linear layer
     fully_features = model.fc.in_features
-    model.fc = nn.Sequential(nn.Linear(fully_features, 1), nn.Sigmoid())
+    model.fc = nn.Sequential(nn.Dropout(p=dropout), nn.Linear(fully_features, 1), nn.Sigmoid())
 
     for index, parameter in enumerate(model.parameters()):
         if index < 30:
