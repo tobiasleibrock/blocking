@@ -9,6 +9,7 @@ from torch import optim
 from torch.optim import lr_scheduler
 from torch.utils.data import Subset, WeightedRandomSampler, DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
+from torchvision.models.inception import Inception3
 from torchmetrics.classification import BinaryF1Score, BinaryPrecision, BinaryRecall
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from sklearn.model_selection import KFold
@@ -20,11 +21,13 @@ import cartopy.crs as ccrs
 
 ### CUSTOM MODULES ###
 from resnet18 import get_model as get_resnet18_model
+from inception_v3 import get_model as get_inception_model
+from efficientnet_s import get_model as get_efficientnet_model
 from dataset import BlockingObservationalDataset1x1, BlockingUKESMDataset1x1
 
 BATCH_SIZE = 64
-LEARNING_RATE = 0.001
-NUM_EPOCHS = 50
+LEARNING_RATE = 0.01
+NUM_EPOCHS = 40
 DEBUG = False
 UKESM = False
 TEST = False
@@ -77,8 +80,7 @@ def get_image(data, time):
     return fig_np
 
 
-def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
-    model.to(device)
+def train_model(datasets, info, num_epochs=25):
     train_dataset = datasets["train"]
     test_dataset = datasets["test"]
     ukesm_dataset = datasets["ukesm"]
@@ -94,17 +96,17 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
     kf = KFold(n_splits=5, shuffle=True)
 
     with TemporaryDirectory() as tempdir:
-
-        # save original weights for resetting
-        torch.save(model.state_dict(), os.path.join(tempdir, "original_weights.pt"))
-
         for fold, (train_indices, val_indices) in enumerate(kf.split(train_dataset)):
-            # if fold != 0:
-            #     continue
 
-            model.load_state_dict(
-                torch.load(os.path.join(tempdir, "original_weights.pt"))
-            )
+            # model = get_inception_model(dropout=0.4)
+            # model = get_resnet18_model(dropout=0.0)
+            # model = get_resnet50_model(dropout=0.0)
+            model = get_efficientnet_model(dropout=0.6)
+
+            model.to(device)
+            optimizer = optim.Adagrad(model.parameters(), lr=LEARNING_RATE, weight_decay=0.1)
+            # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=0.6)
+            scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
             if DEBUG:
                 training_writer = SummaryWriter(f"runs/training/{run}/{fold}/{info}")
@@ -139,7 +141,13 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                 for inputs, labels, _ in train_loader:
                     inputs, labels = inputs.to(device), labels.to(device)
                     optimizer.zero_grad()
-                    outputs = model(inputs.float())
+
+                    # fix for inception model in pytorch
+                    # https://discuss.pytorch.org/t/inception-v3-is-not-working-very-well/38296/3
+                    if type(model) is Inception3:
+                        outputs = model(inputs.float())[0]
+                    else:
+                        outputs = model(inputs.float())
 
                     # scale loss weights by class imbalance in input data
                     class_counts = torch.bincount(labels.long())
@@ -150,7 +158,6 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                     loss = criterion(outputs.flatten(), labels.float())
                     loss.backward()
                     optimizer.step()
-                    # scheduler.step()
 
                     epoch_loss += outputs.shape[0] * loss.item()
                     epoch_labels = torch.cat(
@@ -163,12 +170,14 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                 epoch_loss = epoch_loss / len(epoch_labels)
                 epoch_predictions = (epoch_outputs > 0.5).float()
 
+                print(f"epoch {epoch + 1}/{NUM_EPOCHS}")
                 print("training")
+                print((torch.bincount(epoch_predictions.long()), torch.bincount(epoch_labels.long())))
                 print(f"training outputs: {epoch_outputs[:9]}")
-                print(f"training guesses: {epoch_predictions[:9]}")
-                print(f"training labels: {epoch_labels[:9]}")
+                print(f"training guesses: {epoch_predictions[:17]}")
+                print(f"training labels: {epoch_labels[:17]}")
                 print(
-                    f"training {fold} f1: {f1(epoch_predictions, epoch_labels)} precision: {precision(epoch_predictions, epoch_labels)} recall: {recall(epoch_predictions, epoch_labels)} loss: {epoch_loss} mean: {torch.mean(epoch_predictions)}"
+                    f"training {fold} f1: {f1(epoch_predictions, epoch_labels)} loss: {epoch_loss} mean: {torch.mean(epoch_predictions)}"
                 )
 
                 if DEBUG:
@@ -227,10 +236,10 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                 print((torch.bincount(epoch_predictions.long()), torch.bincount(epoch_labels.long())))
                 print("validation")
                 print(f"validation outputs: {epoch_outputs[:9]}")
-                print(f"validation guesses: {epoch_predictions[:9]}")
-                print(f"validation labels: {epoch_labels[:9]}")
+                print(f"validation guesses: {epoch_predictions[:17]}")
+                print(f"validation labels: {epoch_labels[:17]}")
                 print(
-                    f"validation fold {fold} f1: {f1(epoch_predictions, epoch_labels)} precision: {precision(epoch_predictions, epoch_labels)} recall: {recall(epoch_predictions, epoch_labels)} loss: {epoch_loss} mean: {torch.mean(epoch_predictions)}"
+                    f"validation fold {fold} f1: {f1(epoch_predictions, epoch_labels)} loss: {epoch_loss} mean: {torch.mean(epoch_predictions)}"
                 )
                 print()
                 print()
@@ -328,13 +337,9 @@ def train_model(model, optimizer, scheduler, datasets, info, num_epochs=25):
                         "precision", precision(epoch_outputs, epoch_labels), epoch
                     )
 
+                scheduler.step()
+
     return model
-
-
-model = get_resnet18_model(dropout=0.0)
-# model = get_resnet50_model(dropout=0.0)
-# model = get_efficientnet_model(dropout=0.0)
-
 
 era5_dataset = BlockingObservationalDataset1x1()
 ukesm_dataset = BlockingUKESMDataset1x1()
@@ -346,10 +351,5 @@ train_dataset, test_dataset = random_split(
 )
 
 datasets = {"train": train_dataset, "test": test_dataset, "ukesm": ukesm_dataset}
-# samplers = {"train": train_sampler, "ukesm": ukesm_sampler}
 
-optimizer = optim.SGD(
-    model.parameters(), lr=LEARNING_RATE, momentum=0.1, weight_decay=0.8
-)
-scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
-train_model(model, optimizer, scheduler, datasets, f"with-negatives", NUM_EPOCHS)
+train_model(datasets, f"with-negatives", NUM_EPOCHS)
