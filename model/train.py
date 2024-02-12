@@ -341,13 +341,13 @@ def train_model(datasets, info, num_epochs=25):
 
     return model
 
-era5_dataset = BlockingObservationalDataset1x1()
+dataset = BlockingObservationalDataset1x1()
 ukesm_dataset = BlockingUKESMDataset1x1()
 
-test_size = int(len(era5_dataset) * 0.15)
-train_size = len(era5_dataset) - test_size
+test_size = int(len(dataset) * 0.15)
+train_size = len(dataset) - test_size
 train_dataset, test_dataset = random_split(
-    era5_dataset, [train_size, test_size]
+    dataset, [train_size, test_size]
 )
 
 datasets = {"train": train_dataset, "test": test_dataset, "ukesm": ukesm_dataset}

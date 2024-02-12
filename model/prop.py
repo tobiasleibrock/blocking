@@ -267,14 +267,14 @@ pop_size = 2 * MPI.COMM_WORLD.size
 #     "weight_decay": (0.0, 5.0),
 # }
 limits = {
-    "model": ("resnet18", "resnet50", "inception", "efficientnet_s"),
+    "model": ("resnet18", "resnet50"),
     "scheduler": ("step_01", "step_02"),
     "loss": ("bce", "bce"),
-    "lr": (0.05, 0.001),
-    "batch_size": (64, 256),
-    "optimizer": ("adagrad", "sgd_09"),
-    "dropout": (0.0, 0.5),
-    "weight_decay": (0.0, 1.0),
+    "lr": (0.05, 0.01),
+    "batch_size": (128, 256),
+    "optimizer": ("adagrad", "sgd_09", "sgd_0"),
+    "dropout": (0.2, 0.5),
+    "weight_decay": (0.0, 0.8),
 }
 rng = random.Random(MPI.COMM_WORLD.rank)
 # hyperparameters from https://propulate.readthedocs.io/en/latest/tut_hpo.html
