@@ -78,11 +78,10 @@ def ind_loss(params):
         validation_writer = SummaryWriter(f"{TENSORBOARD_PREFIX}{run}/validation/{params['model']}/{params['optimizer']}/{params['scheduler']}/{params['dropout']}/{params['weight_decay']}")
         training_writer = SummaryWriter(f"{TENSORBOARD_PREFIX}{run}/training/{params['model']}/{params['optimizer']}/{params['scheduler']}/{params['dropout']}/{params['weight_decay']}")
 
-    kf = KFold(n_splits=NUM_FOLDS, shuffle=True)
+    kf = KFold(n_splits=NUM_FOLDS, shuffle=False)
 
     count_folds = 0
     for fold, (train_indices, val_indices) in enumerate(kf.split(train_dataset)):
-        # if fold > 0: continue
         count_folds += 1
 
         model = models[params["model"]](dropout=params["dropout"])
@@ -162,14 +161,6 @@ def ind_loss(params):
             epoch_loss = epoch_loss / len(epoch_labels)
             epoch_predictions = (epoch_outputs > 0.5).float()
 
-            # print(f"epoch {epoch + 1}/{NUM_EPOCHS}")
-            # print("training")
-            # print((torch.bincount(epoch_predictions.long()), torch.bincount(epoch_labels.long())))
-            # print(f"training outputs: {epoch_outputs[:9]}")
-            # print(f"t_gue: {epoch_predictions[:17]}") 
-            # print(f"t_lab: {epoch_labels[:17]}")
-            # print(f"training {fold} f1: {f1(epoch_predictions, epoch_labels)} loss: {epoch_loss} mean: {torch.mean(epoch_predictions)}")
-
             if DEBUG:
                 training_writer.add_scalar("loss", epoch_loss, epoch)
                 training_writer.add_scalar("f1", f1(epoch_outputs, epoch_labels), epoch)
@@ -198,20 +189,6 @@ def ind_loss(params):
             epoch_predictions = (epoch_outputs > 0.5).float()
 
             mean_f1[epoch] += f1(epoch_predictions, epoch_labels)
-
-
-            if len(torch.bincount(epoch_predictions.long())) == 0:
-                print((epoch_outputs, epoch_predictions, epoch_labels))
-            
-            # print("validation")
-            # print((torch.bincount(epoch_predictions.long()), torch.bincount(epoch_labels.long())))
-            # print(f"validation outputs: {epoch_outputs[:9]}")
-            # print(f"v_gue: {epoch_predictions[:17]}") 
-            # print(f"v_lab: {epoch_labels[:17]}")
-            # print(f"validation fold {fold} f1: {f1(epoch_predictions, epoch_labels)} loss: {epoch_loss} mean: {torch.mean(epoch_predictions)}")
-            # print()
-            # print()
-            # print()
             mean_loss[epoch] += epoch_loss
 
             if DEBUG:
@@ -247,15 +224,26 @@ set_logger_config(
 
 era5_dataset = BlockingObservationalDataset1x1()
 
-test_size = int(len(era5_dataset) * 0.15)
-train_size = len(era5_dataset) - test_size
-train_dataset, test_dataset = torch.utils.data.random_split(
-    era5_dataset, [train_size, test_size]
-)
+# test_size = int(len(era5_dataset) * 0.15)
+# train_size = len(era5_dataset) - test_size
+# train_dataset, test_dataset = torch.utils.data.random_split(
+#     era5_dataset, [train_size, test_size]
+# )
+train_dataset = era5_dataset
 
 comm = MPI.COMM_WORLD
 num_generations = 10
 pop_size = 2 * MPI.COMM_WORLD.size
+limits = {
+    "model": ("resnet18", "resnet50"),
+    "scheduler": ("step_01", "step_02", "step_05", "plateau", "none"),
+    "loss": ("bce", "bce_weighted"),
+    "lr": (0.05, 0.0001),
+    "batch_size": (4, 256),
+    "optimizer": ("sgd_0", "sgd_09", "adam", "adagrad"),
+    "dropout": (0.0, 0.8),
+    "weight_decay": (0.0, 5.0),
+}
 # limits = {
 #     "model": ("resnet18", "resnet50", "efficientnet_s", "inception"),
 #     "scheduler": ("step", "plateau", "none"),
@@ -266,16 +254,6 @@ pop_size = 2 * MPI.COMM_WORLD.size
 #     "dropout": (0.0, 0.8),
 #     "weight_decay": (0.0, 5.0),
 # }
-limits = {
-    "model": ("resnet18", "resnet50"),
-    "scheduler": ("step_01", "step_02"),
-    "loss": ("bce", "bce"),
-    "lr": (0.05, 0.01),
-    "batch_size": (128, 256),
-    "optimizer": ("adagrad", "sgd_09", "sgd_0"),
-    "dropout": (0.2, 0.5),
-    "weight_decay": (0.0, 0.8),
-}
 rng = random.Random(MPI.COMM_WORLD.rank)
 # hyperparameters from https://propulate.readthedocs.io/en/latest/tut_hpo.html
 propagator = get_default_propagator(

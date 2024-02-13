@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch import optim
 from torch.optim import lr_scheduler
-from torch.utils.data import Subset, WeightedRandomSampler, DataLoader
+from torch.utils.data import Subset, WeightedRandomSampler, DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.classification import BinaryF1Score, BinaryPrecision, BinaryRecall
 from sklearn.model_selection import KFold
@@ -13,30 +13,21 @@ from sklearn.model_selection import KFold
 
 ### CUSTOM MODULES ###
 from resnet18 import get_model as get_resnet18_model
+from resnet18 import get_model_10_channel as get_resnet18_10_channel_model
+from resnet50 import get_model_10_channel as get_resnet50_10_channel_model
 from efficientnet_s import get_model as get_efficientnet_model
-from dataset import BlockingObservationalDataset1x1, BlockingUKESMDataset1x1
-from torch.utils.data import random_split
+from inception_v3 import get_model as get_inception_model
+from dataset import BlockingObservationalDataset1x1, BlockingUKESMDataset1x1, GeopotentialEra5UkesmDataset, GeopotentialSlpEra5Dataset, SlpObservationalDataset
 
-# CURRENT BEST CONFIG
-# [{'model': 'resnet18', 'scheduler': 'step_01', 'loss': 'bce', 'lr': '2.95E-2', 'batch_size': 125, 'optimizer': 'sgd_09', 'dropout': '2.76E-1', 'weight_decay': '7.51E-2'}, loss 1.26E-1, island 0, worker 0, generation 4]
-
-INFO = "train-debug"
-BATCH_SIZE = 64
+INFO = "inception"
+BATCH_SIZE = 256
 LEARNING_RATE = 0.01
-DROPOUT = 0.6
+DROPOUT = 0.2
 MOMENTUM = 0.9
 WEIGHT_DECAY = 0.1
-NUM_EPOCHS = 40
-NUM_YEARS = 5
-# INFO = "13:44-resnet18-era5-test-ukesm-5fold"
-# BATCH_SIZE = 125
-# LEARNING_RATE = 0.0295
-# DROPOUT = 0.276
-# MOMENTUM = 0.9
-# WEIGHT_DECAY = 0.0751
-# NUM_EPOCHS = 15
-# NUM_YEARS = 5
-DEBUG = True
+NUM_EPOCHS = 15
+NUM_YEARS = 10
+DEBUG = False
 TEST = True
 
 device = torch.device("cuda:0")
@@ -45,41 +36,29 @@ f1 = BinaryF1Score(threshold=0.5).to(device)
 recall = BinaryRecall(threshold=0.5).to(device)
 precision = BinaryPrecision(threshold=0.5).to(device)
 
-era5_dataset = BlockingObservationalDataset1x1()
+era5_geo_dataset = BlockingObservationalDataset1x1()
+era5_slp_dataset = SlpObservationalDataset()
+era5_geo_slp_dataset = GeopotentialSlpEra5Dataset()
 ukesm_dataset = BlockingUKESMDataset1x1()
+era5_ukesm_geo = GeopotentialEra5UkesmDataset()
 
 
-def train_model(era5_dataset, ukesm_dataset, num_epochs):
-    train_dataset = era5_dataset
-    test_dataset = ukesm_dataset
-
-    # train_dataset, val_dataset = random_split(
-    #         era5_dataset, [0.8, 0.2]
-    # )
-
-    # with random
-    # (tensor([542, 262]), tensor([531, 273]))
-    # (tensor([804]), tensor([554, 250]))
-    # (tensor([527, 277]), tensor([541, 263]))
-    # with train random only
-    # (tensor([419, 385]), tensor([562, 242]))
-    # with no random
-    # (tensor([419, 385]), tensor([562, 242]))
-    # test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
+def train_model(train_dataset, test_dataset, num_epochs):
     kf = KFold(n_splits=NUM_YEARS, shuffle=False)
 
     full_validation_labels = torch.tensor([])
     full_validation_outputs = torch.tensor([])
 
     for fold, (train_indices, val_indices) in enumerate(kf.split(train_dataset)):
-        if fold < 2: continue
         print(f"fold {fold}/{NUM_YEARS}")
+
+        # model = get_resnet18_10_channel_model(dropout=DROPOUT)
+        # model = get_resnet50_10_channel_model(dropout=DROPOUT)
         # model = get_resnet18_model(dropout=DROPOUT)
-        model = get_efficientnet_model(dropout=DROPOUT)
+        model = get_inception_model(dropout=DROPOUT)
 
         model.to(device)
-        # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=MOMENTUM)
+        # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
         optimizer = optim.Adagrad(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 
         scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
@@ -99,8 +78,10 @@ def train_model(era5_dataset, ukesm_dataset, num_epochs):
         train_weights = train_class_weights[labels]
         train_sampler = WeightedRandomSampler(train_weights, len(labels))
 
+        train_ds = ConcatDataset([train_ds, ukesm_dataset])
+
         train_loader = DataLoader(
-            train_ds, batch_size=BATCH_SIZE, shuffle=False, sampler=train_sampler
+            train_ds, batch_size=BATCH_SIZE, shuffle=True
         )
         val_loader = DataLoader(
             Subset(train_dataset, val_indices), batch_size=BATCH_SIZE, shuffle=False
@@ -116,7 +97,7 @@ def train_model(era5_dataset, ukesm_dataset, num_epochs):
                 inputs, labels = inputs.to(device), labels.to(device)
                 optimizer.zero_grad()
 
-                outputs = model(inputs.float())
+                outputs = model(inputs.float())[0]
 
                 class_counts = torch.bincount(labels.long())
                 class_weights = BATCH_SIZE / (2.0 * class_counts.float())
@@ -137,6 +118,7 @@ def train_model(era5_dataset, ukesm_dataset, num_epochs):
                 )
 
             epoch_loss = epoch_loss / len(epoch_labels)
+            print(f"trn f1 {f1(epoch_outputs, epoch_labels)}")
 
             if DEBUG:
                 training_writer.add_scalar("loss", epoch_loss, epoch)
@@ -155,7 +137,6 @@ def train_model(era5_dataset, ukesm_dataset, num_epochs):
             epoch_outputs = torch.tensor([])
             with torch.no_grad():
                 for inputs, labels, time in val_loader:
-                    print(datetime.datetime(1900, 1, 1) + datetime.timedelta(hours=int(time[0])))
                     inputs, labels = inputs.to(device), labels.to(device)
                     outputs = model(inputs)
 
@@ -183,12 +164,13 @@ def train_model(era5_dataset, ukesm_dataset, num_epochs):
                     "f1", f1(epoch_outputs, epoch_labels), epoch
                 )
 
-            full_validation_labels = torch.cat(
-                (full_validation_labels, epoch_labels), 0
-            )
-            full_validation_outputs = torch.cat(
-                (full_validation_outputs, epoch_outputs), 0
-            )
+            if epoch == num_epochs - 1:
+                full_validation_labels = torch.cat(
+                    (full_validation_labels, epoch_labels), 0
+                )
+                full_validation_outputs = torch.cat(
+                    (full_validation_outputs, epoch_outputs), 0
+                )
 
             # CONFUSION MATRIX
             # if DEBUG:
@@ -242,8 +224,7 @@ def train_model(era5_dataset, ukesm_dataset, num_epochs):
             scheduler.step()
 
     print("FINAL METRICS")
-    print(f"lenght labels: {len(full_validation_labels)}")
-    print(f"lenght outputs: {len(full_validation_outputs)}")
+    print(INFO)
     print(f"f1: {f1(full_validation_outputs, full_validation_labels)}")
     print(f"recall: {recall(full_validation_outputs, full_validation_labels)}")
     print(f"precision: {precision(full_validation_outputs, full_validation_labels)}")
@@ -251,4 +232,4 @@ def train_model(era5_dataset, ukesm_dataset, num_epochs):
     return model
 
 
-train_model(era5_dataset, ukesm_dataset, NUM_EPOCHS)
+train_model(era5_geo_dataset, era5_geo_dataset, NUM_EPOCHS)
