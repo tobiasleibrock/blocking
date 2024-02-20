@@ -1,7 +1,7 @@
 import random
-from matplotlib.artist import get
 import torch
 import logging
+import datetime
 
 
 from mpi4py import MPI
@@ -14,17 +14,16 @@ from resnet18 import get_model as get_resnet18_model
 from resnet50 import get_model as get_resnet50_model
 from inception_v3 import get_model as get_inception_model
 from efficientnet_s import get_model as get_efficientnet_s_model
-from dataset import BlockingObservationalDataset1x1
+from efficientnet_m import get_model as get_efficientnet_m_model
+from dataset import GeoEra5Dataset, GeoUkesmDataset, SlpEra5Dataset, TransformDataset
 
 from propulate.utils import get_default_propagator, set_logger_config
 from propulate.propulator import Propulator
 
-import os
-from datetime import datetime
-from tempfile import TemporaryDirectory
 
 import torch
 import torch.nn as nn
+import albumentations as A
 import numpy as np
 from sklearn.model_selection import KFold
 from torch.utils.data import Subset, WeightedRandomSampler
@@ -32,33 +31,83 @@ from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.classification import BinaryF1Score, BinaryPrecision, BinaryRecall
 from torchvision.models.inception import Inception3
 
-NUM_EPOCHS = 40
-NUM_FOLDS = 5
-TENSORBOARD_PREFIX = "runs_propulate/"
-DEBUG = False
 
-models = {
-    "resnet18": get_resnet18_model,
-    "resnet50": get_resnet50_model,
-    "efficientnet_s": get_efficientnet_s_model,
-    "inception": get_inception_model,
-}
+def get_transform(key):
+    transforms = {
+        "light": A.Compose(
+            [
+                A.GaussNoise(p=0.1),
+                A.Rotate(limit=15, p=0.1),
+                A.ChannelDropout(channel_drop_range=(1, 1), p=0.1),
+            ]
+        ),
+        "heavy": A.Compose(
+            [
+                A.GaussNoise(p=0.2),
+                A.Rotate(limit=30, p=0.2),
+                A.ChannelDropout(channel_drop_range=(1, 2), p=0.1),
+            ]
+        ),
+    }
+    return transforms[key]
 
-optimizers = {
-    "sgd": optim.SGD,
-    "adam": optim.Adam,
-    "adagrad": optim.Adagrad,
-}
+
+def get_model(key, dropout):
+    models = {
+        "resnet18": get_resnet18_model,
+        "resnet50": get_resnet50_model,
+        "efficientnet_s": get_efficientnet_s_model,
+        "efficientnet_m": get_efficientnet_m_model,
+        "inception": get_inception_model,
+    }
+    return models[key](dropout=dropout)
+
+
+def get_optimizer(key, weight_decay, lr, model):
+    optimizers = {
+        "sgd": optim.SGD,
+        "adam": optim.Adam,
+        "adagrad": optim.Adagrad,
+    }
+
+    if key == "sgd_0":
+        optimizer = optimizers["sgd"](
+            model.parameters(), lr=lr, weight_decay=weight_decay, momentum=0
+        )
+    elif key == "sgd_09":
+        optimizer = optimizers["sgd"](
+            model.parameters(), lr=lr, weight_decay=weight_decay, momentum=0.9
+        )
+    else:
+        optimizer = optimizers[key](
+            model.parameters(), lr=lr, weight_decay=weight_decay
+        )
+
+    return optimizer
+
 
 def get_scheduler(key, optimizer):
     schedulers = {
-        "step_02": lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.2),
         "step_01": lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1),
-        "step_05": lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5),
-        "plateau": lr_scheduler.ReduceLROnPlateau(optimizer, "min", patience=5),
+        "step_09": lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9),
+        "plateau": lr_scheduler.ReduceLROnPlateau(optimizer, "min", patience=3),
         "none": None,
     }
     return schedulers[key]
+
+
+def get_train_loader(dataset, sampler, batch_size, sampler_type):
+    if sampler_type == "weighted_random":
+        train_loader = torch.utils.data.DataLoader(
+            dataset, batch_size=batch_size, shuffle=False, sampler=sampler
+        )
+    else:
+        train_loader = torch.utils.data.DataLoader(
+            dataset, batch_size=batch_size, shuffle=False
+        )
+
+    return train_loader
+
 
 def ind_loss(params):
     rank = MPI.COMM_WORLD.rank
@@ -68,15 +117,18 @@ def ind_loss(params):
     recall = BinaryRecall(threshold=0.5).to(device)
     precision = BinaryPrecision(threshold=0.5).to(device)
 
-    current_datetime = datetime.now()
-    run = current_datetime.strftime("%d-%H-%M")
-
     mean_f1 = np.zeros(NUM_EPOCHS)
     mean_loss = np.zeros(NUM_EPOCHS)
+    mean_precision = np.zeros(NUM_EPOCHS)
+    mean_recall = np.zeros(NUM_EPOCHS)
 
     if DEBUG:
-        validation_writer = SummaryWriter(f"{TENSORBOARD_PREFIX}{run}/validation/{params['model']}/{params['optimizer']}/{params['scheduler']}/{params['dropout']}/{params['weight_decay']}")
-        training_writer = SummaryWriter(f"{TENSORBOARD_PREFIX}{run}/training/{params['model']}/{params['optimizer']}/{params['scheduler']}/{params['dropout']}/{params['weight_decay']}")
+        validation_writer = SummaryWriter(
+            f"{TENSORBOARD_PREFIX}/val/{VARIABLE}/{params['model']}/{params['lr']}/{params['batch_size']}/{params['sampler']}/{params['loss']}/{params['optimizer']}/{params['scheduler']}/{params['dropout']:.2f}/{params['weight_decay']:.2f}"
+        )
+        training_writer = SummaryWriter(
+            f"{TENSORBOARD_PREFIX}/trn/{VARIABLE}/{params['model']}/{params['lr']}/{params['batch_size']}/{params['sampler']}/{params['loss']}/{params['optimizer']}/{params['scheduler']}/{params['dropout']:.2f}/{params['weight_decay']:.2f}"
+        )
 
     kf = KFold(n_splits=NUM_FOLDS, shuffle=False)
 
@@ -84,21 +136,12 @@ def ind_loss(params):
     for fold, (train_indices, val_indices) in enumerate(kf.split(train_dataset)):
         count_folds += 1
 
-        model = models[params["model"]](dropout=params["dropout"])
+        model = get_model(params["model"], params["dropout"])
         model.to(device)
 
-        if params["optimizer"] == "sgd_0":
-            optimizer = optimizers["sgd"](
-                model.parameters(), lr=params["lr"], weight_decay=params["weight_decay"], momentum=0
-            )
-        elif params["optimizer"] == "sgd_09":
-            optimizer = optimizers["sgd"](
-                model.parameters(), lr=params["lr"], weight_decay=params["weight_decay"], momentum=0.9
-            )
-        else:
-            optimizer = optimizers[params["optimizer"]](
-                model.parameters(), lr=params["lr"], weight_decay=params["weight_decay"]
-            )
+        optimizer = get_optimizer(
+            params["optimizer"], params["weight_decay"], params["lr"], model
+        )
 
         scheduler = get_scheduler(params["scheduler"], optimizer)
 
@@ -112,11 +155,18 @@ def ind_loss(params):
         train_weights = train_class_weights[labels]
         train_sampler = WeightedRandomSampler(train_weights, len(labels))
 
-        train_loader = torch.utils.data.DataLoader(
-            train_ds, batch_size=params["batch_size"], shuffle=False, sampler=train_sampler
+        train_ds = TransformDataset(
+            subset_data, transform=get_transform(params["augmentation"])
         )
+
+        train_loader = get_train_loader(
+            train_ds, train_sampler, params["batch_size"], params["sampler"]
+        )
+
         val_loader = torch.utils.data.DataLoader(
-            Subset(train_dataset, val_indices), batch_size=params["batch_size"], shuffle=False
+            Subset(train_dataset, val_indices),
+            batch_size=params["batch_size"],
+            shuffle=False,
         )
 
         for epoch in range(NUM_EPOCHS):
@@ -161,17 +211,31 @@ def ind_loss(params):
             epoch_loss = epoch_loss / len(epoch_labels)
             epoch_predictions = (epoch_outputs > 0.5).float()
 
-            if DEBUG:
+            if DEBUG and fold == 0:
                 training_writer.add_scalar("loss", epoch_loss, epoch)
                 training_writer.add_scalar("f1", f1(epoch_outputs, epoch_labels), epoch)
-                training_writer.add_scalar("recall", recall(epoch_outputs, epoch_labels), epoch)
-                training_writer.add_scalar("precision", precision(epoch_outputs, epoch_labels), epoch)
+                training_writer.add_scalar(
+                    "recall", recall(epoch_outputs, epoch_labels), epoch
+                )
+                training_writer.add_scalar(
+                    "precision", precision(epoch_outputs, epoch_labels), epoch
+                )
 
             ### VALIDATION ###
             model.eval()
             epoch_loss = 0.0
             epoch_labels = torch.tensor([])
             epoch_outputs = torch.tensor([])
+            date_from = datetime.datetime(1900, 1, 1) + datetime.timedelta(
+                hours=int(val_loader.dataset[0][2])
+            )
+            date_to = datetime.datetime(1900, 1, 1) + datetime.timedelta(
+                hours=int(val_loader.dataset[-1][2])
+            )
+
+            if epoch == 0:
+                print(f"validation from {date_from} to {date_to}")
+
             with torch.no_grad():
                 for inputs, labels, t in val_loader:
                     inputs, labels = inputs.to(device), labels.to(device)
@@ -190,12 +254,8 @@ def ind_loss(params):
 
             mean_f1[epoch] += f1(epoch_predictions, epoch_labels)
             mean_loss[epoch] += epoch_loss
-
-            if DEBUG:
-                validation_writer.add_scalar("loss", epoch_loss, epoch)
-                validation_writer.add_scalar("f1", f1(epoch_predictions, epoch_labels), epoch)
-                validation_writer.add_scalar("recall", recall(epoch_outputs, epoch_labels), epoch)
-                validation_writer.add_scalar("precision", precision(epoch_outputs, epoch_labels), epoch)
+            mean_precision[epoch] += precision(epoch_outputs, epoch_labels)
+            mean_recall[epoch] += recall(epoch_outputs, epoch_labels)
 
             if scheduler:
                 if type(scheduler) is lr_scheduler.ReduceLROnPlateau:
@@ -205,11 +265,15 @@ def ind_loss(params):
 
     mean_loss = np.divide(mean_loss, count_folds)
     mean_f1 = np.divide(mean_f1, count_folds)
+    mean_precision = np.divide(mean_precision, count_folds)
+    mean_recall = np.divide(mean_recall, count_folds)
 
     if DEBUG:
         for idx, (loss, f1) in enumerate(zip(mean_loss, mean_f1)):
             validation_writer.add_scalar("loss", mean_loss[idx], idx)
             validation_writer.add_scalar("f1", mean_f1[idx], idx)
+            validation_writer.add_scalar("recall", mean_recall[idx], idx)
+            validation_writer.add_scalar("precision", mean_precision[idx], idx)
 
     return 1 - mean_f1[-1]
 
@@ -222,39 +286,38 @@ set_logger_config(
     colors=False,  # Use colors.
 )
 
-era5_dataset = BlockingObservationalDataset1x1()
+INFO = "hyperparameter-search-ukesm"
+VARIABLE = "geo"
+NUM_EPOCHS = 50
+NUM_FOLDS = 10
+TENSORBOARD_PREFIX = "runs_propulate_final/"
+DEBUG = True
 
-# test_size = int(len(era5_dataset) * 0.15)
-# train_size = len(era5_dataset) - test_size
-# train_dataset, test_dataset = torch.utils.data.random_split(
-#     era5_dataset, [train_size, test_size]
-# )
-train_dataset = era5_dataset
+ukesm_dataset = GeoUkesmDataset()
+train_dataset = ukesm_dataset
+
+# era5_dataset = GeoEra5Dataset()
+# train_dataset = era5_dataset
 
 comm = MPI.COMM_WORLD
-num_generations = 10
+num_generations = 3
 pop_size = 2 * MPI.COMM_WORLD.size
+pop_size = MPI.COMM_WORLD.size
 limits = {
-    "model": ("resnet18", "resnet50"),
-    "scheduler": ("step_01", "step_02", "step_05", "plateau", "none"),
+    "model": ("resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"),
+    "scheduler": ("step_01", "step_09", "plateau", "none"),
     "loss": ("bce", "bce_weighted"),
-    "lr": (0.05, 0.0001),
-    "batch_size": (4, 256),
+    "sampler": ("weighted_random", "none"),
+    "augmentation": ("light", "heavy"),
+    "lr": (0.01, 0.001),
+    "batch_size": (32, 256),
     "optimizer": ("sgd_0", "sgd_09", "adam", "adagrad"),
-    "dropout": (0.0, 0.8),
-    "weight_decay": (0.0, 5.0),
+    "dropout": (0.0, 0.6),
+    "weight_decay": (0.0, 0.6),
 }
-# limits = {
-#     "model": ("resnet18", "resnet50", "efficientnet_s", "inception"),
-#     "scheduler": ("step", "plateau", "none"),
-#     "loss": ("bce", "bce_weighted"),
-#     "lr": (0.05, 0.0001),
-#     "batch_size": (4, 256),
-#     "optimizer": ("sgd_0", "sgd_09", "adam", "adagrad"),
-#     "dropout": (0.0, 0.8),
-#     "weight_decay": (0.0, 5.0),
-# }
-rng = random.Random(MPI.COMM_WORLD.rank)
+
+rng = random.Random()
+
 # hyperparameters from https://propulate.readthedocs.io/en/latest/tut_hpo.html
 propagator = get_default_propagator(
     pop_size=pop_size,
@@ -273,5 +336,9 @@ propulator = Propulator(
     rng=rng,
 )
 
+print(limits)
+
 propulator.propulate(1, 2)
 propulator.summarize(top_n=pop_size, debug=2)
+
+print(INFO + " " + VARIABLE + " " + "done")
