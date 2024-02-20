@@ -2,13 +2,15 @@
 # FILEPATH: /home/scc/mw8007/blocking/jobs/model.sh
 
 #SBATCH --ntasks=1
-#SBATCH --time=3:00:00
-#SBATCH --job-name=blocking
+#SBATCH --time=8:00:00
+#SBATCH --job-name=blocking-model
 #SBATCH --partition=normal
 #SBATCH --gres=gpu:full:1
+#SBATCH --output="/home/scc/mw8007/blocking/jobs/model-era5-era5.out"
+#SBATCH --error="/home/scc/mw8007/blocking/jobs/model-era5-era5.error"
 
-module restore blocking
 cd /home/scc/mw8007/blocking
+
 poetry shell
 
-python model/model.py
+mpiexec -n 1 ./.venv/bin/python model/model.py
