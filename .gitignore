@@ -18,5 +18,8 @@ model/.ipynb_checkpoints/*
 .vscode/*
 
 data/*
-runs/*
+runs*
 *.csv
+
+# trained models
+models/*

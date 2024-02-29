@@ -1,127 +1,37 @@
 ### ML ###
 import datetime
-import logging
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 import torch
 from torch import nn
 import numpy as np
 from torch.utils.data import Subset, WeightedRandomSampler, DataLoader
 from torch.utils.tensorboard import SummaryWriter
-import torch.optim.lr_scheduler as lr_scheduler
 from torchmetrics.classification import BinaryF1Score, BinaryPrecision, BinaryRecall
 from sklearn.model_selection import KFold
 from torchvision.models.inception import Inception3
-from util import (
-    get_dataset,
-    get_optimizer,
-    get_scheduler,
-    get_model,
-    get_transform,
-    get_date,
-)
+from util import get_optimizer, get_scheduler, get_model, get_transform
 
 ### CUSTOM MODULES ###
-from dataset import GeoEra5Dataset, GeoUkesmDataset, TransformDataset
-
-#### UKESM #####
-# (1): [{'model': 'efficientnet_m', 'scheduler': 'step_01', 'loss': 'bce', 'sampler': 'none', 'augmentation': 'light',
-# 'lr': '6.67E-3', 'batch_size': 121, 'optimizer': 'sgd_0', 'dropout': '2.18E-1', 'weight_decay': '2.26E-1'}, loss 2.88E-1, island 0, worker 6, generation 2]
-# INFO = "runs_ukesm/20_02_2024/inc/step_01/bce_weighted/no_sa/light/lr0.00667/b121/adagrad/d0.118/wd0.126/"
-# BATCH_SIZE = 121
-# LEARNING_RATE = 0.00667
-# DROPOUT = 0.118
-# MOMENTUM = 0.0
-# WEIGHT_DECAY = 0.126
-# EPOCHS = 30
-# FOLDS = 101
-# TRANSFORM = "light"  # "heavy", "light", "none"
-# LOSS = "bce_weighted"  # "bce_weighted", "bce"
-# OPTIMIZER = "adagrad"  # "adagrad", "adam", "sgd_09", "sgd_0"
-# SCHEDULER = "step_01"  # "step_01", "step_09", "plateau", "none"
-# MODEL = "inception"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
-# DEBUG = True
-# TRAIN_DATASET = "ukesm"
-# TEST_DATASET = "ukesm"
+from dataset import GeoUkesmDataset, TransformDataset
 
 #### ERA5 #####
 # (1): [{'model': 'inception', 'scheduler': 'step_01', 'loss': 'bce_weighted', 'sampler': 'none', 'augmentation': 'heavy',
 # 'lr': '4.19E-3', 'batch_size': 157, 'optimizer': 'adagrad', 'dropout': '5.06E-3', 'weight_decay': '4.70E-1'}, loss 2.33E-1, island 0, worker 5, generation 0]
-# INFO = "runs_era5/20_02_2024/inc/step_01/bce_weighted/no_sa/heavy/lr0.00419/b157/adagrad/d0.005/wd0.470/"
-# BATCH_SIZE = 157
-# LEARNING_RATE = 0.00419
-# DROPOUT = 0.00506
-# MOMENTUM = 0.9
-# WEIGHT_DECAY = 0.47
-# EPOCHS = 30
-# FOLDS = 41
-# TRANSFORM = "heavy"  # "heavy", "light"
-# LOSS = "bce_weighted"  # "bce_weighted", "bce"
-# OPTIMIZER = "adagrad"  # "adagrad", "adam", "sgd_09", "sgd_0"
-# SCHEDULER = "step_01"  # "step_01", "step_09", "plateau", "none"
-# MODEL = "inception"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
-# DEBUG = True
-# TRAIN_DATASET = "era5"
-# TEST_DATASET = "era5"
-
-#### ERA5 MSL #####
-# [{'model': 'efficientnet_m', 'scheduler': 'plateau', 'loss': 'bce_weighted', 'sampler': 'none', 'augmentation': 'heavy', 'lr': '7.33E-3',
-# 'batch_size': 83, 'optimizer': 'sgd_0', 'dropout': '2.12E-1', 'weight_decay': '2.06E-1'}, loss 3.51E-1, island 0, worker 4, generation 1]
-INFO = "runs_era5_msl/21_02_2024/eff_m/plateau/bce_weighted/no_sa/heavy/lr0.00733/b83/sgd_0/d0.212/wd0.206/"
-BATCH_SIZE = 83
-LEARNING_RATE = 0.00733
-DROPOUT = 0.212
-MOMENTUM = 0.0
-WEIGHT_DECAY = 0.206
-EPOCHS = 30
+INFO = "runs_era5/20-02-2024/inc/step_01/bce_weighted/no_sa/heavy/lr0.00419/b157/adagrad/d0.005/wd0.470/"
+BATCH_SIZE = 157
+LEARNING_RATE = 0.00419
+DROPOUT = 0.00506
+MOMENTUM = 0.9
+WEIGHT_DECAY = 0.47
+EPOCHS = 50
 FOLDS = 41
 TRANSFORM = "heavy"  # "heavy", "light"
 LOSS = "bce_weighted"  # "bce_weighted", "bce"
-OPTIMIZER = "sgd_0"  # "adagrad", "adam", "sgd_09", "sgd_0"
-SCHEDULER = "plateau"  # "step_01", "step_09", "plateau", "none"
-MODEL = "efficientnet_m"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
+OPTIMIZER = "adagrad"  # "adagrad", "adam", "sgd_09", "sgd_0"
+SCHEDULER = "step_01"  # "step_01", "step_09", "plateau", "none"
+MODEL = "inception"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
+
 DEBUG = True
-TRAIN_DATASET = "era5-msl"
-TEST_DATASET = "era5-msl"
-
-#### EXPERIMENTATION #####
-# (1): [{'model': 'inception', 'scheduler': 'step_01', 'loss': 'bce_weighted', 'sampler': 'none', 'augmentation': 'heavy',
-# 'lr': '4.19E-3', 'batch_size': 157, 'optimizer': 'adagrad', 'dropout': '5.06E-3', 'weight_decay': '4.70E-1'}, loss 2.33E-1, island 0, worker 5, generation 0]
-# INFO = "experimentation"
-# BATCH_SIZE = 128
-# LEARNING_RATE = 0.005
-# DROPOUT = 0.1
-# MOMENTUM = 0.9
-# WEIGHT_DECAY = 0.1
-# EPOCHS = 30
-# FOLDS = 101
-# TRANSFORM = "light"  # "heavy", "light", "none"
-# LOSS = "bce_weighted"  # "bce_weighted", "bce"
-# OPTIMIZER = "adagrad"  # "adagrad", "adam", "sgd_09", "sgd_0"
-# SCHEDULER = "step_01"  # "step_01", "step_09", "plateau", "none"
-# MODEL = "inception"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
-# DEBUG = False
-# TRAIN_DATASET = "ukesm"
-# TEST_DATASET = "ukesm"
-
-print("CONFIGURATION")
-print(
-    BATCH_SIZE,
-    LEARNING_RATE,
-    DROPOUT,
-    MOMENTUM,
-    WEIGHT_DECAY,
-    EPOCHS,
-    FOLDS,
-    INFO,
-    TRANSFORM,
-    LOSS,
-    OPTIMIZER,
-    SCHEDULER,
-    MODEL,
-    DEBUG,
-    TRAIN_DATASET,
-    TEST_DATASET,
-)
 
 full_test_labels = torch.tensor([])
 full_test_outputs = torch.tensor([])
@@ -133,15 +43,15 @@ def train_model(
     print(f"fold {fold}/{FOLDS}")
 
     if DEBUG:
-        year = get_date(test_dataset[0][2], TEST_DATASET).year
+        year = (
+            datetime.datetime(1900, 1, 1)
+            + datetime.timedelta(hours=int(test_dataset[0][2]))
+        ).year
         test_writer = SummaryWriter(f"{INFO}/te/{str(year)}/{fold}")
         training_writer = SummaryWriter(f"{INFO}/tr/{str(year)}/{fold}")
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
-    test_labels = torch.tensor([])
-    test_outputs = torch.tensor([])
 
     for epoch in range(num_epochs):
         print(f"epoch {epoch+1}/{num_epochs}")
@@ -212,9 +122,12 @@ def train_model(
 
         epoch_loss = epoch_loss / len(epoch_labels)
         print(f"tst f1 {f1(epoch_outputs, epoch_labels)}")
-        date_from = get_date(test_dataset[0][2], TEST_DATASET)
-        date_to = get_date(test_dataset[-1][2], TEST_DATASET)
-
+        date_from = datetime.datetime(1900, 1, 1) + datetime.timedelta(
+            hours=int(test_loader.dataset[0][2])
+        )
+        date_to = datetime.datetime(1900, 1, 1) + datetime.timedelta(
+            hours=int(test_loader.dataset[-1][2])
+        )
         print(f"test from {date_from} to {date_to}")
         print("-----------------------------------")
 
@@ -240,19 +153,9 @@ def train_model(
             disp.plot()
             test_writer.add_figure("conf-matrix", disp.figure_, global_step=epoch)
 
-        if epoch == num_epochs - 1:
-            print(
-                f" epoch shape {epoch_labels.shape} {epoch_outputs.shape} test shape {test_labels.shape} {test_outputs.shape}"
-            )
-            test_labels = torch.cat((test_labels, epoch_labels), 0)
-            test_outputs = torch.cat((test_outputs, epoch_outputs), 0)
+        scheduler.step()
 
-        if type(scheduler) is lr_scheduler.ReduceLROnPlateau:
-            scheduler.step(loss.item())
-        else:
-            scheduler.step()
-
-    return model, test_labels, test_outputs
+    return model, epoch_labels, epoch_outputs
 
 
 device = torch.device("cuda:0")
@@ -261,12 +164,12 @@ f1 = BinaryF1Score(threshold=0.5).to(device)
 recall = BinaryRecall(threshold=0.5).to(device)
 precision = BinaryPrecision(threshold=0.5).to(device)
 
-tr_dataset = get_dataset(TRAIN_DATASET)
-ts_dataset = get_dataset(TEST_DATASET)
+# era5_dataset = GeoEra5Dataset()
+ukesm_dataset = GeoUkesmDataset()
 
 kf = KFold(n_splits=FOLDS, shuffle=False)
 
-for fold, (train_indices, test_indices) in enumerate(kf.split(tr_dataset)):
+for fold, (train_indices, test_indices) in enumerate(kf.split(ukesm_dataset)):
     model = get_model(MODEL, DROPOUT)
     model.to(device)
 
@@ -274,9 +177,9 @@ for fold, (train_indices, test_indices) in enumerate(kf.split(tr_dataset)):
     optimizer = get_optimizer(OPTIMIZER, WEIGHT_DECAY, LEARNING_RATE, model)
     scheduler = get_scheduler(SCHEDULER, optimizer)
 
-    train_ds = Subset(tr_dataset, train_indices)
+    train_ds = Subset(ukesm_dataset, train_indices)
 
-    subset_data = [tr_dataset[idx] for idx in train_ds.indices]
+    subset_data = [ukesm_dataset[idx] for idx in train_ds.indices]
     _, subset_labels, _ = zip(*subset_data)
     labels = torch.tensor(subset_labels).long()
     train_counts = torch.bincount(labels)
@@ -292,7 +195,7 @@ for fold, (train_indices, test_indices) in enumerate(kf.split(tr_dataset)):
         optimizer,
         scheduler,
         train_ds,
-        Subset(tr_dataset, test_indices),
+        Subset(ukesm_dataset, test_indices),
         fold,
         EPOCHS,
     )

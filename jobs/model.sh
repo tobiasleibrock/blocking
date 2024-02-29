@@ -6,8 +6,8 @@
 #SBATCH --job-name=blocking-model
 #SBATCH --partition=normal
 #SBATCH --gres=gpu:full:1
-#SBATCH --output="/home/scc/mw8007/blocking/jobs/model-era5-era5.out"
-#SBATCH --error="/home/scc/mw8007/blocking/jobs/model-era5-era5.error"
+#SBATCH --output="/home/scc/mw8007/blocking/jobs/model-era5-era5-msl.out"
+#SBATCH --error="/home/scc/mw8007/blocking/jobs/model-era5-era5-msl.error"
 
 cd /home/scc/mw8007/blocking
 

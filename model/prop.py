@@ -1,7 +1,6 @@
 import random
 import torch
 import logging
-import datetime
 
 
 from mpi4py import MPI
@@ -30,83 +29,14 @@ from torch.utils.data import Subset, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics.classification import BinaryF1Score, BinaryPrecision, BinaryRecall
 from torchvision.models.inception import Inception3
-
-
-def get_transform(key):
-    transforms = {
-        "light": A.Compose(
-            [
-                A.GaussNoise(p=0.1),
-                A.Rotate(limit=15, p=0.1),
-                A.ChannelDropout(channel_drop_range=(1, 1), p=0.1),
-            ]
-        ),
-        "heavy": A.Compose(
-            [
-                A.GaussNoise(p=0.2),
-                A.Rotate(limit=30, p=0.2),
-                A.ChannelDropout(channel_drop_range=(1, 2), p=0.1),
-            ]
-        ),
-    }
-    return transforms[key]
-
-
-def get_model(key, dropout):
-    models = {
-        "resnet18": get_resnet18_model,
-        "resnet50": get_resnet50_model,
-        "efficientnet_s": get_efficientnet_s_model,
-        "efficientnet_m": get_efficientnet_m_model,
-        "inception": get_inception_model,
-    }
-    return models[key](dropout=dropout)
-
-
-def get_optimizer(key, weight_decay, lr, model):
-    optimizers = {
-        "sgd": optim.SGD,
-        "adam": optim.Adam,
-        "adagrad": optim.Adagrad,
-    }
-
-    if key == "sgd_0":
-        optimizer = optimizers["sgd"](
-            model.parameters(), lr=lr, weight_decay=weight_decay, momentum=0
-        )
-    elif key == "sgd_09":
-        optimizer = optimizers["sgd"](
-            model.parameters(), lr=lr, weight_decay=weight_decay, momentum=0.9
-        )
-    else:
-        optimizer = optimizers[key](
-            model.parameters(), lr=lr, weight_decay=weight_decay
-        )
-
-    return optimizer
-
-
-def get_scheduler(key, optimizer):
-    schedulers = {
-        "step_01": lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1),
-        "step_09": lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9),
-        "plateau": lr_scheduler.ReduceLROnPlateau(optimizer, "min", patience=3),
-        "none": None,
-    }
-    return schedulers[key]
-
-
-def get_train_loader(dataset, sampler, batch_size, sampler_type):
-    if sampler_type == "weighted_random":
-        train_loader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, shuffle=False, sampler=sampler
-        )
-    else:
-        train_loader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, shuffle=False
-        )
-
-    return train_loader
+from util import (
+    get_date,
+    get_optimizer,
+    get_scheduler,
+    get_model,
+    get_transform,
+    get_train_loader,
+)
 
 
 def ind_loss(params):
@@ -226,12 +156,8 @@ def ind_loss(params):
             epoch_loss = 0.0
             epoch_labels = torch.tensor([])
             epoch_outputs = torch.tensor([])
-            date_from = datetime.datetime(1900, 1, 1) + datetime.timedelta(
-                hours=int(val_loader.dataset[0][2])
-            )
-            date_to = datetime.datetime(1900, 1, 1) + datetime.timedelta(
-                hours=int(val_loader.dataset[-1][2])
-            )
+            date_from = get_date(val_loader.dataset[0][2], DATASET)
+            date_to = get_date(val_loader.dataset[-1][2], DATASET)
 
             if epoch == 0:
                 print(f"validation from {date_from} to {date_to}")
@@ -286,18 +212,20 @@ set_logger_config(
     colors=False,  # Use colors.
 )
 
-INFO = "hyperparameter-search-ukesm"
-VARIABLE = "geo"
+INFO = "hyperparameter-search-era5"
+VARIABLE = "msl"
 NUM_EPOCHS = 50
 NUM_FOLDS = 10
 TENSORBOARD_PREFIX = "runs_propulate_final/"
 DEBUG = True
+DATASET = "era5-msl"
 
-ukesm_dataset = GeoUkesmDataset()
-train_dataset = ukesm_dataset
-
-# era5_dataset = GeoEra5Dataset()
-# train_dataset = era5_dataset
+if DATASET == "era5":
+    train_dataset = GeoEra5Dataset()
+elif DATASET == "ukesm":
+    train_dataset = GeoUkesmDataset()
+elif DATASET == "era5-msl":
+    train_dataset = SlpEra5Dataset()
 
 comm = MPI.COMM_WORLD
 num_generations = 3
