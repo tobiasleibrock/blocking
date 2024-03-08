@@ -3,8 +3,10 @@ import torch.nn as nn
 from torchvision.models import EfficientNet_V2_M_Weights, efficientnet_v2_m
 
 
-def get_model(dropout=0):
-    model = efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT, dropout=dropout)
+def get_model(dropout):
+    model = efficientnet_v2_m(
+        weights=EfficientNet_V2_M_Weights.DEFAULT, dropout=dropout
+    )
 
     # create new first conv layer (resnet)
     weights = model.features[0][0].weight.clone()
@@ -13,9 +15,9 @@ def get_model(dropout=0):
     )
     with torch.no_grad():
         model.features[0][0].weight[:, 0] = weights[:, 0]
-        model.features[0][0].weight[:, 1] = weights[:, 1]
-        model.features[0][0].weight[:, 2] = weights[:, 2]
-        model.features[0][0].weight[:, 3] = weights[:, 1]
+        model.features[0][0].weight[:, 1] = weights[:, 0]
+        model.features[0][0].weight[:, 2] = weights[:, 0]
+        model.features[0][0].weight[:, 3] = weights[:, 0]
         model.features[0][0].weight[:, 4] = weights[:, 0]
 
     # create new final linear layer

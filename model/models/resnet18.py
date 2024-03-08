@@ -6,7 +6,6 @@ from torchvision.models import ResNet18_Weights, resnet18
 def get_model(dropout):
     model = resnet18(weights=ResNet18_Weights.DEFAULT)
 
-    # create new first conv layer (resnet)
     conv1_weights = model.conv1.weight.clone()
     model.conv1 = nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False)
     with torch.no_grad():
@@ -16,9 +15,10 @@ def get_model(dropout):
         model.conv1.weight[:, 3] = conv1_weights[:, 0]
         model.conv1.weight[:, 4] = conv1_weights[:, 0]
 
-    # create new final linear layer
     fully_features = model.fc.in_features
-    model.fc = nn.Sequential(nn.Dropout(p=dropout), nn.Linear(fully_features, 1), nn.Sigmoid())
+    model.fc = nn.Sequential(
+        nn.Dropout(p=dropout), nn.Linear(fully_features, 1), nn.Sigmoid()
+    )
 
     for index, parameter in enumerate(model.parameters()):
         if index < 30:
@@ -27,6 +27,7 @@ def get_model(dropout):
     model.float()
 
     return model
+
 
 def get_model_10_channel(dropout):
     model = resnet18(weights=ResNet18_Weights.DEFAULT)
@@ -48,7 +49,9 @@ def get_model_10_channel(dropout):
 
     # create new final linear layer
     fully_features = model.fc.in_features
-    model.fc = nn.Sequential(nn.Dropout(p=dropout), nn.Linear(fully_features, 1), nn.Sigmoid())
+    model.fc = nn.Sequential(
+        nn.Dropout(p=dropout), nn.Linear(fully_features, 1), nn.Sigmoid()
+    )
 
     for index, parameter in enumerate(model.parameters()):
         if index < 30:

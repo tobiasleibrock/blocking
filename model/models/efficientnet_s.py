@@ -4,7 +4,9 @@ from torchvision.models import EfficientNet_V2_S_Weights, efficientnet_v2_s
 
 
 def get_model(dropout):
-    model = efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.DEFAULT, dropout=dropout)
+    model = efficientnet_v2_s(
+        weights=EfficientNet_V2_S_Weights.DEFAULT, dropout=dropout
+    )
 
     # create new first conv layer (resnet)
     weights = model.features[0][0].weight.clone()

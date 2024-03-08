@@ -7,11 +7,11 @@ import cartopy.crs as ccrs
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
-from resnet18 import get_model as get_resnet18_model
-from resnet50 import get_model as get_resnet50_model
-from inception_v3 import get_model as get_inception_model
-from efficientnet_s import get_model as get_efficientnet_s_model
-from efficientnet_m import get_model as get_efficientnet_m_model
+from models.resnet18 import get_model as get_resnet18_model
+from models.resnet50 import get_model as get_resnet50_model
+from models.inception_v3 import get_model as get_inception_model
+from models.efficientnet_s import get_model as get_efficientnet_s_model
+from models.efficientnet_m import get_model as get_efficientnet_m_model
 
 from dataset import GeoEra5Dataset, GeoUkesmDataset, SlpEra5Dataset
 

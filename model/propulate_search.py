@@ -5,15 +5,8 @@ import logging
 
 from mpi4py import MPI
 
-import torch
-import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
-from resnet18 import get_model as get_resnet18_model
-from resnet50 import get_model as get_resnet50_model
-from inception_v3 import get_model as get_inception_model
-from efficientnet_s import get_model as get_efficientnet_s_model
-from efficientnet_m import get_model as get_efficientnet_m_model
 from dataset import GeoEra5Dataset, GeoUkesmDataset, SlpEra5Dataset, TransformDataset
 
 from propulate.utils import get_default_propagator, set_logger_config
@@ -22,7 +15,6 @@ from propulate.propulator import Propulator
 
 import torch
 import torch.nn as nn
-import albumentations as A
 import numpy as np
 from sklearn.model_selection import KFold
 from torch.utils.data import Subset, WeightedRandomSampler
@@ -163,7 +155,7 @@ def ind_loss(params):
                 print(f"validation from {date_from} to {date_to}")
 
             with torch.no_grad():
-                for inputs, labels, t in val_loader:
+                for inputs, labels, _ in val_loader:
                     inputs, labels = inputs.to(device), labels.to(device)
                     outputs = model(inputs)
 
@@ -195,7 +187,7 @@ def ind_loss(params):
     mean_recall = np.divide(mean_recall, count_folds)
 
     if DEBUG:
-        for idx, (loss, f1) in enumerate(zip(mean_loss, mean_f1)):
+        for idx in range(len(mean_loss)):
             validation_writer.add_scalar("loss", mean_loss[idx], idx)
             validation_writer.add_scalar("f1", mean_f1[idx], idx)
             validation_writer.add_scalar("recall", mean_recall[idx], idx)
@@ -206,7 +198,7 @@ def ind_loss(params):
 
 set_logger_config(
     level=logging.INFO,  # logging level
-    log_file=f"./propulate.log",  # logging path
+    log_file="./propulate.log",  # logging path
     log_to_stdout=True,  # Print log on stdout.
     log_rank=False,  # Do not prepend MPI rank to logging messages.
     colors=False,  # Use colors.
@@ -236,12 +228,12 @@ limits = {
     "scheduler": ("step_01", "step_09", "plateau", "none"),
     "loss": ("bce", "bce_weighted"),
     "sampler": ("weighted_random", "none"),
-    "augmentation": ("light", "heavy"),
-    "lr": (0.01, 0.001),
-    "batch_size": (32, 256),
+    "augmentation": ("light", "heavy", "none"),
+    "lr": (0.01, 0.0001),
+    "batch_size": (8, 512),
     "optimizer": ("sgd_0", "sgd_09", "adam", "adagrad"),
-    "dropout": (0.0, 0.6),
-    "weight_decay": (0.0, 0.6),
+    "dropout": (0.0, 0.9),
+    "weight_decay": (0.0, 1.5),
 }
 
 rng = random.Random()
