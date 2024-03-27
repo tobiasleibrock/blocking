@@ -13,7 +13,7 @@ from models.inception_v3 import get_model as get_inception_model
 from models.efficientnet_s import get_model as get_efficientnet_s_model
 from models.efficientnet_m import get_model as get_efficientnet_m_model
 
-from dataset import GeoEra5Dataset, GeoUkesmDataset, SlpEra5Dataset
+from dataset import GeoEra5Dataset, GeoUkesmDataset, SlpEra5Dataset, SlpUkesmDataset
 
 import torch
 import albumentations as A
@@ -64,12 +64,14 @@ def get_dataset(key):
         return GeoUkesmDataset()
     elif key == "era5-msl":
         return SlpEra5Dataset()
+    elif key == "ukesm-msl":
+        return SlpUkesmDataset()
 
 
 def get_date(offset, dataset):
-    if dataset == "era5" or dataset == "era5-msl":
+    if "era5" in dataset:
         return datetime.datetime(1900, 1, 1) + datetime.timedelta(hours=int(offset))
-    if dataset == "ukesm":
+    if "ukesm" in dataset:
         reference_date = datetime.datetime(1850, 1, 1)
         return reference_date + datetime.timedelta(days=int(offset / 360 * 365.25))
 
@@ -95,7 +97,7 @@ def get_transform(key):
     return transforms[key]
 
 
-def get_model(key, dropout):
+def get_model(key, dropout, weights=None):
     models = {
         "resnet18": get_resnet18_model,
         "resnet50": get_resnet50_model,
@@ -103,7 +105,7 @@ def get_model(key, dropout):
         "efficientnet_m": get_efficientnet_m_model,
         "inception": get_inception_model,
     }
-    return models[key](dropout=dropout)
+    return models[key](dropout=dropout, pre_weights=weights)
 
 
 def get_optimizer(key, weight_decay, lr, model):

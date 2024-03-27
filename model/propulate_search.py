@@ -7,7 +7,13 @@ from mpi4py import MPI
 
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
-from dataset import GeoEra5Dataset, GeoUkesmDataset, SlpEra5Dataset, TransformDataset
+from dataset import (
+    GeoEra5Dataset,
+    GeoUkesmDataset,
+    SlpEra5Dataset,
+    SlpUkesmDataset,
+    TransformDataset,
+)
 
 from propulate.utils import get_default_propagator, set_logger_config
 from propulate.propulator import Propulator
@@ -204,13 +210,13 @@ set_logger_config(
     colors=False,  # Use colors.
 )
 
-INFO = "hyperparameter-search-era5"
+INFO = "hyperparameter-search-ukesm"
 VARIABLE = "msl"
 NUM_EPOCHS = 50
 NUM_FOLDS = 10
 TENSORBOARD_PREFIX = "runs_propulate_final/"
 DEBUG = True
-DATASET = "era5-msl"
+DATASET = "ukesm-msl"
 
 if DATASET == "era5":
     train_dataset = GeoEra5Dataset()
@@ -218,9 +224,11 @@ elif DATASET == "ukesm":
     train_dataset = GeoUkesmDataset()
 elif DATASET == "era5-msl":
     train_dataset = SlpEra5Dataset()
+elif DATASET == "ukesm-msl":
+    train_dataset = SlpUkesmDataset()
 
 comm = MPI.COMM_WORLD
-num_generations = 3
+num_generations = 2
 pop_size = 2 * MPI.COMM_WORLD.size
 pop_size = MPI.COMM_WORLD.size
 limits = {

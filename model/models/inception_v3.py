@@ -5,7 +5,7 @@ from torchvision.models.inception import BasicConv2d
 from torchvision.transforms import transforms
 
 
-def get_model(dropout):
+def get_model(dropout, pre_weights=None):
     model = inception_v3(
         weights=Inception_V3_Weights.DEFAULT, dropout=dropout, transform_input=False
     )
@@ -27,6 +27,9 @@ def get_model(dropout):
     # create new final linear layer
     fully_features = model.fc.in_features
     model.fc = nn.Sequential(nn.Linear(fully_features, 1), nn.Sigmoid())
+
+    if pre_weights:
+        model.load_state_dict(torch.load(pre_weights))
 
     for index, parameter in enumerate(model.parameters()):
         # 291 parameters

@@ -5,7 +5,7 @@ from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 import torch
 from torch import nn
 import numpy as np
-from torch.utils.data import Subset, WeightedRandomSampler, DataLoader
+from torch.utils.data import Subset, WeightedRandomSampler, DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim.lr_scheduler as lr_scheduler
 from torchmetrics.classification import BinaryF1Score, BinaryPrecision, BinaryRecall
@@ -23,10 +23,14 @@ from util import (
 ### CUSTOM MODULES ###
 from dataset import GeoEra5Dataset, GeoUkesmDataset, TransformDataset
 
+WEIGHTS = None
+ADD_DATASET = None
+RANDOMIZE = False
+
 #### UKESM #####
 # (1): [{'model': 'efficientnet_m', 'scheduler': 'step_01', 'loss': 'bce', 'sampler': 'none', 'augmentation': 'light',
 # 'lr': '6.67E-3', 'batch_size': 121, 'optimizer': 'sgd_0', 'dropout': '2.18E-1', 'weight_decay': '2.26E-1'}, loss 2.88E-1, island 0, worker 6, generation 2]
-# INFO = "runs_ukesm/20_02_2024/inc/step_01/bce_weighted/no_sa/light/lr0.00667/b121/adagrad/d0.118/wd0.126/"
+# INFO = "runs_ukesm/20_02_2024/eff_m/step_01/bce_weighted/no_sa/light/lr0.00667/b121/adagrad/d0.118/wd0.126/"
 # BATCH_SIZE = 121
 # LEARNING_RATE = 0.00667
 # DROPOUT = 0.118
@@ -38,10 +42,50 @@ from dataset import GeoEra5Dataset, GeoUkesmDataset, TransformDataset
 # LOSS = "bce_weighted"  # "bce_weighted", "bce"
 # OPTIMIZER = "adagrad"  # "adagrad", "adam", "sgd_09", "sgd_0"
 # SCHEDULER = "step_01"  # "step_01", "step_09", "plateau", "none"
-# MODEL = "inception"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
+# MODEL = "efficientnet_m"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
 # DEBUG = True
 # TRAIN_DATASET = "ukesm"
-# TEST_DATASET = "ukesm"
+
+#### ERA5 (PRE-TRAINED UKESM) #####
+# (1): [{'model': 'efficientnet_m', 'scheduler': 'step_01', 'loss': 'bce', 'sampler': 'none', 'augmentation': 'light',
+# 'lr': '6.67E-3', 'batch_size': 121, 'optimizer': 'sgd_0', 'dropout': '2.18E-1', 'weight_decay': '2.26E-1'}, loss 2.88E-1, island 0, worker 6, generation 2]
+# INFO = "runs_era5_pre_ukesm/20_02_2024/inc/step_01/bce_weighted/no_sa/light/lr0.00667/b121/adagrad/d0.118/wd0.126/"
+# BATCH_SIZE = 121
+# LEARNING_RATE = 0.00667
+# DROPOUT = 0.118
+# MOMENTUM = 0.0
+# WEIGHT_DECAY = 0.126
+# EPOCHS = 30
+# TRANSFORM = "light"  # "heavy", "light", "none"
+# LOSS = "bce_weighted"  # "bce_weighted", "bce"
+# OPTIMIZER = "adagrad"  # "adagrad", "adam", "sgd_09", "sgd_0"
+# SCHEDULER = "step_01"  # "step_01", "step_09", "plateau", "none"
+# MODEL = "inception"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
+# DEBUG = True
+# FOLDS = 41
+# TRAIN_DATASET = "era5"
+# WEIGHTS = "models/ukesm-geo-inception.pt"
+
+#### UKESM + ERA5 (TEST UKESM) #####
+# (1): [{'model': 'efficientnet_m', 'scheduler': 'step_01', 'loss': 'bce', 'sampler': 'none', 'augmentation': 'light',
+# 'lr': '6.67E-3', 'batch_size': 121, 'optimizer': 'sgd_0', 'dropout': '2.18E-1', 'weight_decay': '2.26E-1'}, loss 2.88E-1, island 0, worker 6, generation 2]
+# INFO = "runs_ukesm+era5_ukesm/20_02_2024/eff_m/step_01/bce_weighted/no_sa/light/lr0.00667/b121/adagrad/d0.118/wd0.126/"
+# BATCH_SIZE = 121
+# LEARNING_RATE = 0.00667
+# DROPOUT = 0.118
+# MOMENTUM = 0.0
+# WEIGHT_DECAY = 0.126
+# EPOCHS = 30
+# FOLDS = 101
+# TRANSFORM = "light"  # "heavy", "light", "none"
+# LOSS = "bce_weighted"  # "bce_weighted", "bce"
+# OPTIMIZER = "adagrad"  # "adagrad", "adam", "sgd_09", "sgd_0"
+# SCHEDULER = "step_01"  # "step_01", "step_09", "plateau", "none"
+# MODEL = "efficientnet_m"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
+# DEBUG = True
+# TRAIN_DATASET = "ukesm"
+# ADD_DATASET = "era5"
+# RANDOMIZE = True
 
 #### ERA5 #####
 # (1): [{'model': 'inception', 'scheduler': 'step_01', 'loss': 'bce_weighted', 'sampler': 'none', 'augmentation': 'heavy',
@@ -61,47 +105,85 @@ from dataset import GeoEra5Dataset, GeoUkesmDataset, TransformDataset
 # MODEL = "inception"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
 # DEBUG = True
 # TRAIN_DATASET = "era5"
-# TEST_DATASET = "era5"
 
-#### ERA5 MSL #####
-# [{'model': 'efficientnet_m', 'scheduler': 'plateau', 'loss': 'bce_weighted', 'sampler': 'none', 'augmentation': 'heavy', 'lr': '7.33E-3',
-# 'batch_size': 83, 'optimizer': 'sgd_0', 'dropout': '2.12E-1', 'weight_decay': '2.06E-1'}, loss 3.51E-1, island 0, worker 4, generation 1]
-INFO = "runs_era5_msl/21_02_2024/eff_m/plateau/bce_weighted/no_sa/heavy/lr0.00733/b83/sgd_0/d0.212/wd0.206/"
-BATCH_SIZE = 83
-LEARNING_RATE = 0.00733
-DROPOUT = 0.212
-MOMENTUM = 0.0
-WEIGHT_DECAY = 0.206
-EPOCHS = 30
-FOLDS = 41
-TRANSFORM = "heavy"  # "heavy", "light"
-LOSS = "bce_weighted"  # "bce_weighted", "bce"
-OPTIMIZER = "sgd_0"  # "adagrad", "adam", "sgd_09", "sgd_0"
-SCHEDULER = "plateau"  # "step_01", "step_09", "plateau", "none"
-MODEL = "efficientnet_m"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
-DEBUG = True
-TRAIN_DATASET = "era5-msl"
-TEST_DATASET = "era5-msl"
-
-#### EXPERIMENTATION #####
+#### UKESM (PRE-TRAINED ERA5) #####
 # (1): [{'model': 'inception', 'scheduler': 'step_01', 'loss': 'bce_weighted', 'sampler': 'none', 'augmentation': 'heavy',
 # 'lr': '4.19E-3', 'batch_size': 157, 'optimizer': 'adagrad', 'dropout': '5.06E-3', 'weight_decay': '4.70E-1'}, loss 2.33E-1, island 0, worker 5, generation 0]
-# INFO = "experimentation"
-# BATCH_SIZE = 128
-# LEARNING_RATE = 0.005
-# DROPOUT = 0.1
+# INFO = "runs_era5/20_02_2024/inc/step_01/bce_weighted/no_sa/heavy/lr0.00419/b157/adagrad/d0.005/wd0.470/"
+# BATCH_SIZE = 157
+# LEARNING_RATE = 0.00419
+# DROPOUT = 0.00506
 # MOMENTUM = 0.9
-# WEIGHT_DECAY = 0.1
+# WEIGHT_DECAY = 0.47
 # EPOCHS = 30
-# FOLDS = 101
-# TRANSFORM = "light"  # "heavy", "light", "none"
+# TRANSFORM = "heavy"  # "heavy", "light"
 # LOSS = "bce_weighted"  # "bce_weighted", "bce"
 # OPTIMIZER = "adagrad"  # "adagrad", "adam", "sgd_09", "sgd_0"
 # SCHEDULER = "step_01"  # "step_01", "step_09", "plateau", "none"
 # MODEL = "inception"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
-# DEBUG = False
+# DEBUG = True
+# FOLDS = 101
 # TRAIN_DATASET = "ukesm"
-# TEST_DATASET = "ukesm"
+# WEIGHTS = "models/era5-geo-inception.pt"
+
+#### ERA5 + UKESM (TEST ERA5) #####
+# (1): [{'model': 'inception', 'scheduler': 'step_01', 'loss': 'bce_weighted', 'sampler': 'none', 'augmentation': 'heavy',
+# 'lr': '4.19E-3', 'batch_size': 157, 'optimizer': 'adagrad', 'dropout': '5.06E-3', 'weight_decay': '4.70E-1'}, loss 2.33E-1, island 0, worker 5, generation 0]
+INFO = "runs_era5+ukesm_era5/20_02_2024/inc/step_01/bce_weighted/no_sa/heavy/lr0.00419/b157/adagrad/d0.005/wd0.470/"
+BATCH_SIZE = 157
+LEARNING_RATE = 0.00419
+DROPOUT = 0.00506
+MOMENTUM = 0.9
+WEIGHT_DECAY = 0.47
+EPOCHS = 30
+FOLDS = 41
+TRANSFORM = "heavy"  # "heavy", "light"
+LOSS = "bce_weighted"  # "bce_weighted", "bce"
+OPTIMIZER = "adagrad"  # "adagrad", "adam", "sgd_09", "sgd_0"
+SCHEDULER = "step_01"  # "step_01", "step_09", "plateau", "none"
+MODEL = "inception"  # "resnet18", "resnet50", "efficientnet_s", "efficientnet_m", "inception"
+DEBUG = True
+TRAIN_DATASET = "era5"
+ADD_DATASET = "ukesm"
+RANDOMIZE = True
+
+#### UKESM MSL #####
+# (1): [{'model': 'efficientnet_m', 'scheduler': 'step_01', 'loss': 'bce', 'sampler': 'none', 'augmentation': 'light', 'lr': '6.67E-3',
+# 'batch_size': 121, 'optimizer': 'sgd_0', 'dropout': '2.18E-1', 'weight_decay': '2.26E-1'}, loss 2.88E-1, island 0, worker 6, generation 2]
+# INFO = "runs_ukesm_msl/21_02_2024/eff_m/step_01/bce/no_sa/light/lr0.00667/b121/sgd_0/d0.218/wd0.226/"
+# BATCH_SIZE = 121
+# LEARNING_RATE = 0.00667
+# DROPOUT = 0.218
+# MOMENTUM = 0.0
+# WEIGHT_DECAY = 0.226
+# EPOCHS = 30
+# FOLDS = 101
+# TRANSFORM = "light"
+# LOSS = "bce"
+# OPTIMIZER = "sgd_0"
+# SCHEDULER = "step_01"
+# MODEL = "efficientnet_m"
+# DEBUG = True
+# TRAIN_DATASET = "ukesm-msl"
+
+#### ERA5 MSL #####
+# [{'model': 'efficientnet_m', 'scheduler': 'plateau', 'loss': 'bce_weighted', 'sampler': 'none', 'augmentation': 'heavy', 'lr': '7.33E-3',
+# 'batch_size': 83, 'optimizer': 'sgd_0', 'dropout': '2.12E-1', 'weight_decay': '2.06E-1'}, loss 3.51E-1, island 0, worker 4, generation 1]
+# INFO = "runs_era5_msl/21_02_2024/eff_m/plateau/bce_weighted/no_sa/heavy/lr0.00733/b83/sgd_0/d0.212/wd0.206/"
+# BATCH_SIZE = 83
+# LEARNING_RATE = 0.00733
+# DROPOUT = 0.212
+# MOMENTUM = 0.0
+# WEIGHT_DECAY = 0.206
+# EPOCHS = 30
+# FOLDS = 41
+# TRANSFORM = "heavy"
+# LOSS = "bce_weighted"
+# OPTIMIZER = "sgd_0"
+# SCHEDULER = "plateau"
+# MODEL = "efficientnet_m"
+# DEBUG = True
+# TRAIN_DATASET = "era5-msl"
 
 print("CONFIGURATION")
 print(
@@ -120,7 +202,6 @@ print(
     MODEL,
     DEBUG,
     TRAIN_DATASET,
-    TEST_DATASET,
 )
 
 full_test_labels = torch.tensor([])
@@ -133,11 +214,15 @@ def train_model(
     print(f"fold {fold}/{FOLDS}")
 
     if DEBUG:
-        year = get_date(test_dataset[0][2], TEST_DATASET).year
+        year = get_date(test_dataset[0][2], TRAIN_DATASET).year
         test_writer = SummaryWriter(f"{INFO}/te/{str(year)}/{fold}")
         training_writer = SummaryWriter(f"{INFO}/tr/{str(year)}/{fold}")
 
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    if RANDOMIZE:
+        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    else:
+        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
     test_labels = torch.tensor([])
@@ -200,7 +285,7 @@ def train_model(
         with torch.no_grad():
             for inputs, labels, time in test_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
-                outputs = model(inputs)
+                outputs = model(inputs.float())
 
                 epoch_loss += outputs.shape[0] * loss.item()
                 epoch_labels = torch.cat(
@@ -212,8 +297,8 @@ def train_model(
 
         epoch_loss = epoch_loss / len(epoch_labels)
         print(f"tst f1 {f1(epoch_outputs, epoch_labels)}")
-        date_from = get_date(test_dataset[0][2], TEST_DATASET)
-        date_to = get_date(test_dataset[-1][2], TEST_DATASET)
+        date_from = get_date(test_dataset[0][2], TRAIN_DATASET)
+        date_to = get_date(test_dataset[-1][2], TRAIN_DATASET)
 
         print(f"test from {date_from} to {date_to}")
         print("-----------------------------------")
@@ -262,12 +347,15 @@ recall = BinaryRecall(threshold=0.5).to(device)
 precision = BinaryPrecision(threshold=0.5).to(device)
 
 tr_dataset = get_dataset(TRAIN_DATASET)
-ts_dataset = get_dataset(TEST_DATASET)
+add_dataset = get_dataset(ADD_DATASET) if ADD_DATASET else None
 
 kf = KFold(n_splits=FOLDS, shuffle=False)
 
 for fold, (train_indices, test_indices) in enumerate(kf.split(tr_dataset)):
-    model = get_model(MODEL, DROPOUT)
+    if WEIGHTS:
+        print(f"LOADING WEIGHTS: {WEIGHTS}")
+
+    model = get_model(MODEL, DROPOUT, WEIGHTS)
     model.to(device)
 
     transform = get_transform(TRANSFORM)
@@ -284,7 +372,9 @@ for fold, (train_indices, test_indices) in enumerate(kf.split(tr_dataset)):
     train_weights = train_class_weights[labels]
     train_sampler = WeightedRandomSampler(train_weights, len(labels))
 
-    # train_ds = ConcatDataset([train_ds, ukesm_dataset])
+    if ADD_DATASET:
+        train_ds = ConcatDataset([train_ds, add_dataset])
+
     train_ds = TransformDataset(subset_data, transform=transform)
 
     result = train_model(

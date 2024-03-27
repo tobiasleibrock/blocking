@@ -3,7 +3,7 @@ import torch.nn as nn
 from torchvision.models import EfficientNet_V2_S_Weights, efficientnet_v2_s
 
 
-def get_model(dropout):
+def get_model(dropout, pre_weights=None):
     model = efficientnet_v2_s(
         weights=EfficientNet_V2_S_Weights.DEFAULT, dropout=dropout
     )
@@ -23,6 +23,9 @@ def get_model(dropout):
     # create new final linear layer
     fully_features = model.classifier[1].in_features
     model.classifier[1] = nn.Sequential(nn.Linear(fully_features, 1), nn.Sigmoid())
+
+    if pre_weights:
+        model.load_state_dict(torch.load(pre_weights))
 
     for index, parameter in enumerate(model.parameters()):
         if index < 220:
