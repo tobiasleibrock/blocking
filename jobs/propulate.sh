@@ -6,8 +6,8 @@
 #SBATCH --job-name=blocking-propulate
 #SBATCH --partition=normal
 #SBATCH --gres=gpu:full:4
-#SBATCH --output="blocking/jobs/propulate-ukesm-msl-2.out"
-#SBATCH --error="blocking/jobs/propulate-ukesm-msl-2.error"
+#SBATCH --output="blocking/jobs/propulate-<additional-informations>.out"
+#SBATCH --error="blocking/jobs/propulate-<additional-informations>.error"
 
 cd blocking
 

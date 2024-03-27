@@ -5,10 +5,11 @@
 #SBATCH --time=8:00:00
 #SBATCH --job-name=blocking-model
 #SBATCH --partition=normal
-#SBAT --gres=gpu:full:1
-#SBATCH --gres=gpu:4g.20gb:1
-#SBATCH --output="jobs/model-ukesm+era5-test-era5-rnd.out"
-#SBATCH --error="jobs/model-ukesm+era5-test-era5-rnd.error"
+#SBATCH --gres=gpu:full:1
+#SBATCH --output="blocking/jobs/model-<additional-informations>.out"
+#SBATCH --error="blocking/jobs/model-<additional-informations>.error"
+
+cd blocking
 
 poetry shell
 
