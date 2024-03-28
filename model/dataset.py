@@ -5,13 +5,13 @@ import xarray as xr
 from xarray.backends import NetCDF4DataStore
 import numpy as np
 
-ERA5_LABELS = "data/labels/GTD_1979-2019_JJAextd_8.nc"
-UKESM_LABELS = "data/labels/GTD_UKESM1-0-LL_piControl_1960-2060_JJAextd.nc"
+ERA5_LABELS = "data/<path>"
+UKESM_LABELS = "data/<path>"
 
-ERA5_GEO_PATH = "data/geopotential_height_500hPa_era5_6hourly_z0001_daymean_2019_beginAdjust_1x1_final.nc"
-ERA5_SLP_PATH = "data/slp_era5_final.nc"
-UKESM_GEO_PATH = "data/500zg_day_UKESM1-0-LL_piControl_r1i1p1f2_gn_19600101-20601230_NHML_JJAextd_1x1_final.nc"
-UKESM_SLP_PATH = "data/slp_ukesm_final.nc"
+ERA5_GEO_PATH = "data/<path>"
+ERA5_SLP_PATH = "data/<path>"
+UKESM_GEO_PATH = "data/<path>"
+UKESM_SLP_PATH = "data/<path>"
 
 
 class TransformDataset(Dataset):
@@ -70,6 +70,7 @@ class GeoEra5Dataset(Dataset):
         return data, label, time
 
 
+# remove one year from era5 dataset
 class GeoEra5Dataset40(Dataset):
     def __init__(self, prefix=""):
         xr_data = xr.open_dataset(
@@ -186,6 +187,7 @@ class GeoUkesmDataset(Dataset):
         return data, label, time
 
 
+# remove one year from ukesm dataset
 class GeoUkesmDataset100(Dataset):
     def __init__(self, prefix=""):
         xr_geo = xr.open_dataset(

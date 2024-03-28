@@ -10,7 +10,7 @@ def get_model(dropout, pre_weights=None):
         weights=Inception_V3_Weights.DEFAULT, dropout=dropout, transform_input=False
     )
 
-    # create new first conv layer (resnet)
+    # create new first conv layer (inception)
     weights = model.Conv2d_1a_3x3.conv.weight.clone()
     model.Conv2d_1a_3x3 = nn.Sequential(
         transforms.Resize(299, antialias=True),
@@ -32,7 +32,6 @@ def get_model(dropout, pre_weights=None):
         model.load_state_dict(torch.load(pre_weights))
 
     for index, parameter in enumerate(model.parameters()):
-        # 291 parameters
         if index < 140:
             parameter.requires_grad = False
 

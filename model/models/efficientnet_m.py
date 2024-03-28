@@ -8,7 +8,7 @@ def get_model(dropout, pre_weights=None):
         weights=EfficientNet_V2_M_Weights.DEFAULT, dropout=dropout
     )
 
-    # create new first conv layer (resnet)
+    # create new first conv layer (efficientnet)
     weights = model.features[0][0].weight.clone()
     model.features[0][0] = nn.Conv2d(
         5, 24, kernel_size=3, stride=2, padding=1, bias=False
